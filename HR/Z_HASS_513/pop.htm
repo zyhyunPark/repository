@@ -1,0 +1,438 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>잔업/특근 인원</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var csInfo = '<%=CS_INFO%>';
+        var pageCmd = '<%=FLAG%>'; // C : 등록 / U : 수정 / D : 조회
+        var list_box = '<%=LIST_BOX%>';
+        var it_plist = '<%=IT_PLIST%>';
+        var uid = '<%=uid%>'; // grid uid
+
+        var p_csInfo;
+        var p_isInfo;
+
+
+        $(document).ready(function() {
+            csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+            list_box = typeof list_box == 'object' ? list_box : $.parseJSON(list_box);
+            if (it_plist != '') {
+                it_plist = typeof it_plist == 'object' ? it_plist : $.parseJSON(it_plist);
+            }
+
+            setForm(pageCmd);
+            setInitParam();
+            setButton();
+        });
+
+        function setForm(pageCmd) {
+            if (pageCmd == 'D') { // 조회
+                $('input').attr('readonly', true);
+                $("#srchPernrBtn").unbind("click");
+                $("input.dropdownlist").attr('disabled', true);
+                $('textarea').attr('readonly', true);
+                $('textarea').addClass("disabled");
+
+                $("#saveBtn").remove();
+            } else if (pageCmd == 'U') { // 수정
+                $('#pernrt').attr('readonly', true);
+                $("#srchPernrBtn").unbind("click");
+            }
+
+            $("input").each(function() {
+                $(this).val(csInfo[this.id]);
+            });
+            $("textarea").each(function() {
+                if (csInfo[this.id] != null) {
+                    $(this).val( csInfo[this.id] );
+                }
+            });
+
+            $("input.dropdownlist").each(function() {
+                var nm = this.name;
+                $(this).kendoDropDownList({
+                    dataSource: list_box[nm],
+                    dataTextField: "value",
+                    dataValueField: "key",
+                    change: checkPtime
+                });
+            });
+
+            $("#datum").val(kendo.toString(kendo.parseDate($("#datum").val(), 'yyyyMMdd'), 'yyyy.MM.dd'));
+        }
+
+        function setInitParam() {
+            p_isInfo = {
+                datum: $("#datum").val().replace(/\./g, ''),
+                hflag: csInfo.hflag,
+                region: csInfo.region,
+                office: csInfo.office,
+                pernr: $("#pernrt").val(),
+                reason: $("#reason").val(),
+                zgubun: opener.app.vData.CS_INFO.zgubun
+            };
+
+            if (pageCmd == 'C') {
+                p_csInfo = {
+                    datum: csInfo.datum,
+                    hflag: csInfo.hflag
+                };
+            } else if (pageCmd == 'U') {
+                p_csInfo = csInfo;
+            }
+        }
+
+        function setButton() {
+            $("#srchPernrBtn").click(function() {
+                if (pageCmd == 'U' || pageCmd == 'D') { // 수정/조회
+                    return;
+                }
+                openSearchPernr3Popup('setPernr', csInfo.office);
+            });
+
+            $("#saveBtn").click(function() {
+                if (pageCmd == 'D') { // 조회
+                    return;
+                }
+
+                var isValid = true;
+                // 필수값 체크
+                $("#inputForm .required").not("span").each(function() {
+                    if ( $(this).val() == "" || $(this).val() == null ) {
+                        alert( $(this).closest("td").prev().text() + " 값은 필수입니다." );
+                        $(this).focus();
+                        isValid = false;
+                        return false;
+                    }
+                });
+
+                // 특수문자 체크
+                var regExp = /[\{\}\[\]\"\\\]/gi;
+                $("textarea").each(function() {
+                    if ( regExp.test($(this).val()) ) {
+                        alert("큰따옴표, '[', ']', '{', '}', '\\\' 특수문자는 입력하실 수 없습니다.");
+                        $(this).focus();
+                        isValid = false;
+                        return false;
+                    }
+                });
+
+                // 2019.01.22 시작시간 체크
+                if($("#begth").val() == '00' && $("#begtm").val() == '00') {
+                    isValid = false;
+                    alert("시작시간은 00시 00분 이후로 입력해주세요.");
+                    return false;
+                }
+
+                if (!isValid) return;
+
+                // 저장 체크
+                checkSave();
+
+            });
+        }
+
+        function setPernr(item) {
+             $("#pernrt").val(item.pernrt);
+             $("#ename").val(item.ename);
+             $("#zjikgp").val(item.jikwi);
+
+             // 고정시간, 총시간 출력
+             checkPtime();
+        }
+
+        function checkPtime() {
+            p_isInfo.pernr = $("#pernrt").val();
+
+            p_csInfo.pernrt = $("#pernrt").val();
+            p_csInfo.ename = $("#ename").val();
+            p_csInfo.zjikgp = $("#zjikgp").val();
+            p_csInfo.begt = $("#begth").val() + $("#begtm").val();
+            p_csInfo.endt = $("#endth").val() + $("#endtm").val();
+            p_csInfo.begth = $("#begth").val();
+            p_csInfo.begtm = $("#begtm").val();
+            p_csInfo.endth = $("#endth").val();
+            p_csInfo.endtm = $("#endtm").val();
+            p_csInfo.reason = $("#reason").val();
+            p_csInfo.zpbegh1 = $("#zpbegh1").val();
+            p_csInfo.zpbegm1 = $("#zpbegm1").val();
+            p_csInfo.zpendh1 = $("#zpendh1").val();
+            p_csInfo.zpendm1 = $("#zpendm1").val();
+            p_csInfo.zpbegh2 = $("#zpbegh2").val();
+            p_csInfo.zpbegm2 = $("#zpbegm2").val();
+            p_csInfo.zpendh2 = $("#zpendh2").val();
+            p_csInfo.zpendm2 = $("#zpendm2").val();
+            p_csInfo.zpbegh3 = $("#zpbegh3").val();
+            p_csInfo.zpbegm3 = $("#zpbegm3").val();
+            p_csInfo.zpendh3 = $("#zpendh3").val();
+            p_csInfo.zpendm3 = $("#zpendm3").val();
+            p_csInfo.zwork = replaceJsonChar($("#zwork").val().replace(/\\\/g, ''));
+            p_csInfo.zgoal = replaceJsonChar($("#zgoal").val().replace(/\\\/g, ''));
+            p_csInfo.zremark = replaceJsonChar($("#zremark").val().replace(/\\\/g, ''));
+
+            var param;
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_CHECK_PTIME");
+            //cfc.addParam('IV_PFLAG', csInfo.hflag, false);
+            cfc.addParam('IS_INFO', p_isInfo, true);
+            cfc.addParam('CS_INFO', p_csInfo, true);
+
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                async: false,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: param,
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc.trim() == "" || data.ES_RESULT.subrc.trim() == "0") {
+                       $("#ztimes").val(data.CS_INFO.ztimes); // 고정근로
+                       $("#tottx").val(data.CS_INFO.tottx); // 총시간
+
+                       p_csInfo = data.CS_INFO;
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function checkSave() {
+            p_isInfo.pernr = $("#pernrt").val();
+
+            p_csInfo.reason = $("#reason").val();
+
+            p_csInfo.zwork = replaceJsonChar($("#zwork").val().replace(/\\\/g, ''));
+            p_csInfo.zgoal = replaceJsonChar($("#zgoal").val().replace(/\\\/g, ''));
+            p_csInfo.zremark = replaceJsonChar($("#zremark").val().replace(/\\\/g, ''));
+
+            var s_index = 1;
+            if (pageCmd == 'U') {
+                s_index = opener.dataSource.indexOf(opener.dataSource.getByUid(uid)) + 1;
+            }
+
+            var param;
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_CHECK_SAVE_PERNR");
+            cfc.addParam('IV_PFLAG', pageCmd, false);
+            cfc.addParam('IS_INFO', p_isInfo, true);
+            cfc.addParam('CS_INFO', p_csInfo, true);
+            if (it_plist == "") {
+                cfc.addParam('IT_PLIST', it_plist, false);
+            } else {
+                cfc.addParam('IT_PLIST', it_plist, true);
+            }
+            cfc.addParam('IV_SINDEX', s_index, false);
+
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                async: false,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: param,
+                type: "POST",
+                success: function(data) {
+                   if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                      // 성공
+                      if (pageCmd == "U") {
+                          // 수정
+                          var item = opener.dataSource.getByUid(uid);
+                          for (var key in data.CS_INFO) {
+                              if (data.CS_INFO.hasOwnProperty(key)) {
+                                  item.set(key, data.CS_INFO[key]);
+                              }
+                          }
+                      } else {
+                          // 추가
+                          opener.dataSource.add(data.CS_INFO);
+                      }
+
+                      // 총 시간 세팅
+                      opener.app.setToth();
+                      // 결재라인
+                      opener.app.setAppLine();
+                      window.close();
+                   } else {
+                      alert(data.ES_RESULT.message);
+                   }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getStrTime(hid, mid) {
+            var hh = kendo.toString($("#"+hid).data("kendoTimePicker").value(), "HH");
+            var mm = kendo.toString($("#"+mid).data("kendoTimePicker").value(), "mm");
+            return hh + mm;
+        }
+
+    </script>
+</head>
+<body>
+<section id="popup_wrap2">
+
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+            <h1>작업자 세부내역</h1>
+            <a href="javascript:top.window.close()" class="btn_close">Close</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic_b" id="saveBtn">저장</button>
+            <button type="button" class="btn_basic" onclick="top.window.close()">닫기</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <form id="inputForm">
+        <div class="form_box">
+            <table class="form_basic">
+                <colgroup>
+                    <col width="100"/>
+                    <col width="*"/>
+                    <col width="100"/>
+                    <col width="*"/>
+                    <col width="100"/>
+                    <col width="*"/>
+                    <col width="100"/>
+                    <col width="*"/>
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <th scope="row">근태구분</th>
+                        <td>
+                            <input id="hflag" name="ET_HFLAG" class="dropdownlist disabled" disabled />
+                        </td>
+                        <th scope="row">사번</th>
+                        <td>
+                            <div class="text_search">
+                                <input type="text" value="" id="pernrt" class="k-textbox required" readonly="readonly" >
+                                <a href="#none" id="srchPernrBtn">검색</a>
+                            </div>
+                        </td>
+                        <th scope="row">성명</th>
+                        <td><input type="text" class="k-textbox" value="" id="ename" readonly="readonly" ></td>
+                        <th scope="row">직급</th>
+                        <td><input type="text" class="k-textbox" value="" id="zjikgp" readonly="readonly" ></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">근태일</th>
+                        <td><input type="text" class="k-textbox" id="datum" readonly="readonly" ></td>
+                        <th scope="row">고정근로</th>
+                        <td colspan="5"><input type="text" class="k-textbox" id="ztimes" readonly="readonly" ></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">시작시간</th>
+                        <td>
+                            <input type="text" class="w_time hh required dropdownlist" name="ET_UZEIT" id="begth" />
+                             : <input type="text" class="w_time mm required dropdownlist" name="ET_MINUTE" id="begtm" />
+                        </td>
+                        <th scope="row">종료시간</th>
+                        <td>
+                            <input type="text" class="w_time hh required dropdownlist" name="ET_UZEIT"  id="endth" />
+                             : <input type="text" class="w_time mm required dropdownlist" name="ET_MINUTE" id="endtm" />
+                        </td>
+                        <th scope="row">총시간</th>
+                        <td><input type="text" class="k-textbox" id="tottx" readonly="readonly" ></td>
+                        <th scope="row">사유</th>
+                        <td>
+                            <input class="required dropdownlist" id="reason" name="ET_REASON" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴무1</th>
+                        <td>
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpbegh1" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpbegm1" />
+                        </td>
+                        <th scope="row">종료시간</th>
+                        <td>
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpendh1" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpendm1" />
+                        </td>
+                        <th scope="row">휴무2</th>
+                        <td>
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpbegh2" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpbegm2" />
+                        </td>
+                        <th scope="row">종료시간</th>
+                        <td>
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpendh2" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpendm2" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴무3</th>
+                        <td>
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpbegh3" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpbegm3" />
+                        </td>
+                        <th scope="row">종료시간</th>
+                        <td colspan="5">
+                            <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpendh3" />
+                             : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpendm3" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">작업내용</th>
+                        <td colspan="7">
+                            <textarea rows="2" class="all required" id="zwork"></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">작업목표</th>
+                        <td colspan="7">
+                            <textarea rows="2" class="all required" id="zgoal"></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">비고</th>
+                        <td colspan="7">
+                            <textarea rows="2" class="all" id="zremark"></textarea>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        </form>
+        <!-- //form -->
+
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
