@@ -1,0 +1,568 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>휴복직 · 단축근로 결재 조회</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var gData = null;
+        var offSource, offGrid, workGrid, planGrid, workSource, planSource;
+        var workitemId = '<%=WORKITEM_ID %>';
+
+        var bReject = false;
+        var clicked = false;
+        var display = true;
+
+        $(document).ready(function() {
+            $("#closeBtn").click(function() { top.window.close() });
+            initDisplay();
+        });
+
+
+        function initDisplay() {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getDisplayData(),
+                type: "POST",
+                success: setDisplay,
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getDisplayData() {
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PN_WF_DISPLAY");
+            cfc.addParam('IV_WORKITEM', workitemId, false);
+            cfc.addParam('IV_FLAG', '', false);
+            //cfc.addParam('IV_FLAG', (display ? '' : 'X'), false);
+
+            return cfc.getData();
+        }
+
+
+        function setDisplay(data, status, jqXHR) {
+            if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                // 휴복직-단축근로 구분이 없으면 (기존 bsp화면)
+                if (data.ES_OFF.masty == "") {
+                    data.ES_OFF.masty = "1"; // 휴복직 default 처리
+                    data.ES_OFF.mastx = "휴복직";
+                }
+
+                // setButton();
+                setForm(data);
+                setData(data);
+
+                gET_LINE1 = data.ET_LINE1;
+                gET_LINE2 = data.ET_LINE2;
+
+                setApprovalLine("lineGrid1", data.ET_LINE1);
+                setApprovalLine("lineGrid2", data.ET_LINE2);
+
+            } else {
+                alert(data.ES_RESULT.message);
+            }
+        }
+
+        function setForm(data) {
+            // calendar setting
+            $("#reqdt, #chddt1, #suspfrm1, #suspto1, #refrm, #begda, #endda, #suspfrm2, #suspto2").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            // 휴복직/단축근로에 따른 화면 레이아웃 설정
+            if (data.ES_OFF.masty == "1") { // 휴복직
+                $("#tbody_massn").show();
+
+                if (data.ES_OFF.zmassn == "E1" || data.ES_OFF.zmassn == "E2") { // 휴직, 휴직연장
+                    $("#tbody1").show();
+                } else if (data.ES_OFF.zmassn == "E3") { // 복직
+                    $("#tbody2").show();
+                    $("#tbody3").show();
+                }
+            } else if (data.ES_OFF.masty == "2") { // 단축근로 - 육아
+                $("#tbody_massn").hide();
+                $("#tbody_swobj").show();
+                $("#tbody4").show();
+            } else if (data.ES_OFF.masty == "3") { // 단축근로 - 임신
+                $("#tbody_massn").hide();
+                $("#tbody_swobj").hide();
+                $("#tbody4").show();
+            }
+
+            if (data.ES_OFF.zmassg == "08") {
+            // 육아휴직일때 자녀명 필드 보여주기
+                $(".dl_zbrname").show();
+            } else if (data.ES_OFF.zmassg == "15" || data.ES_OFF.zmassg == "18") {
+            // 출산전후휴가, 출산전후휴가(다태아)인 경우 출산예정일 보여주기
+                $(".dl_chddt").show();
+            }
+
+            $("#tbody_file").show(); // 파일첨부
+
+            // 신청 안내 이미지 변경
+            if (data.ES_OFF.zmassn == "E1" && data.ES_OFF.zmassg == "05") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_05.jpg");
+            } else if (data.ES_OFF.zmassn == "E1" && data.ES_OFF.zmassg == "08") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_08.jpg");
+            } else if (data.ES_OFF.zmassn == "E1" && data.ES_OFF.zmassg == "11") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_11.jpg");
+            } else if (data.ES_OFF.zmassn == "E1" && (data.ES_OFF.zmassg == "15" || data.ES_OFF.zmassg == "18") ) {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_15,18.jpg");
+            } else if (data.ES_OFF.zmassn == "E1" && data.ES_OFF.zmassg == "16") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_16.jpg");
+            } else if (data.ES_OFF.zmassn == "E1" && data.ES_OFF.zmassg == "19") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E1_19.jpg");
+            } else if (data.ES_OFF.zmassn == "E2" && data.ES_OFF.zmassg == "05") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E2_05.jpg");
+            } else if (data.ES_OFF.zmassn == "E2" && data.ES_OFF.zmassg == "11") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E2_11.jpg");
+            } else if (data.ES_OFF.zmassn == "E2" && data.ES_OFF.zmassg == "19") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E2_19.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && data.ES_OFF.zmassg == "05") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_05.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && data.ES_OFF.zmassg == "08") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_08.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && data.ES_OFF.zmassg == "11") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_11.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && (data.ES_OFF.zmassg == "15" || data.ES_OFF.zmassg == "18") ) {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_15,18.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && data.ES_OFF.zmassg == "16") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_16.jpg");
+            } else if (data.ES_OFF.zmassn == "E3" && data.ES_OFF.zmassg == "19") {
+                $("#image1").attr("src", "../z_ess/images/etc/e,h501_E3_19.jpg");
+            } else {
+                $("#image1").attr("src", "");
+            }
+        }
+
+        function setData(data){
+            gData = data;
+            //Data mapping in screen
+
+            // appid
+            $("#appid").val(data.ES_OFF.appid);
+            // 휴복직-단축근로 구분
+            $("#ET_MASTY").val(data.ES_OFF.mastx);
+            // 휴복직구분
+            $("#ET_MASSN").val(data.ES_OFF.zmassnt);
+            // 사번
+            $("#pernr").val(Number(data.ES_OFF.pernr));
+            // 사원명
+            $("#hname").text(data.ES_OFF.hname);
+            // 신청날짜
+            $("#reqdt").val(kendo.toString(kendo.parseDate(data.ES_OFF.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // 우편번호/주소/상세주소1,2/휴직중 연락처
+            $("#pstlz").val(data.ES_OFF.pstlz);
+            $("#addr1").val(data.ES_OFF.addr1);
+            $("#stras").val(data.ES_OFF.stras);
+            $("#locat").val(data.ES_OFF.locat);
+            $("#susptel").val(data.ES_OFF.susptel);
+
+            if (data.ES_OFF.masty == "1") { // 휴복직
+                if (data.ES_OFF.zmassn == "E1" || data.ES_OFF.zmassn == "E2") { // 휴직/휴직연장
+                    // 휴복직사유
+                    $("#ET_MASSG1").val(data.ES_OFF.zmassgt);
+                    // 신청기간
+                    $("#suspfrm1").val(kendo.toString(kendo.parseDate(data.ES_OFF.suspfrm, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                    $("#suspto1").val(kendo.toString(kendo.parseDate(data.ES_OFF.suspto, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                    // 자녀
+                    $("#zbrname1").val(data.ES_OFF.zbrname);
+                    // 출산예정일
+                    $("#chddt1").val(kendo.toString(kendo.parseDate(data.ES_OFF.chddt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+
+                    //최근 휴직신청 기간
+                    if (data.ES_OFF.zmassn == "E2") {
+                       $(".div_period").show();
+                       $("#span_period").text( kendo.toString(kendo.parseDate(data.ES_OFF.e1beg, 'yyyyMMdd'), 'yyyy.MM.dd') + "~" + kendo.toString(kendo.parseDate(data.ES_OFF.e1end, 'yyyyMMdd'), 'yyyy.MM.dd') );
+                    }
+                } else if (data.ES_OFF.zmassn == "E3") { // 복직
+                    // 휴복직사유
+                    $("#ET_MASSG2").val(data.ES_OFF.zmassgt);
+                    // 신청기간
+                    $("#suspfrm2").val(kendo.toString(kendo.parseDate(data.ES_OFF.suspfrm, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                    $("#suspto2").val(kendo.toString(kendo.parseDate(data.ES_OFF.suspto, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                }
+
+            } else if (data.ES_OFF.masty == "2") { // 단축근로
+                // 자녀
+                $("#zbrname2").val(data.ES_OFF.zbrname);
+            }
+
+            // 복직희망일/신청기간
+            $("#refrm").val(kendo.toString(kendo.parseDate(data.ES_OFF.refrm, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $(".offday").text(data.ES_OFF.offday);
+            //단축근로 신청기간/단축근로시작/종료시각/단축근로시간
+            $("#begda").val(kendo.toString(kendo.parseDate(data.ES_OFF.begda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $("#endda").val(kendo.toString(kendo.parseDate(data.ES_OFF.endda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $("#ET_SRTTY").val(data.ES_OFF.srttx);
+
+            // 파일첨부
+            if (data.ES_OFF.objo1.length > 0) {
+                $("#attach1").append("<a>").find("a").attr("href", data.ES_OFF.url1).attr("target","_blank").text(data.ES_OFF.fname);
+            }
+            if (data.ES_OFF.objo2.length > 0) {
+                $("#attach2").append("<a>").find("a").attr("href", data.ES_OFF.url2).attr("target","_blank").text(data.ES_OFF.fname2);
+            }
+            // 재상신 표시여부
+            if (!display && data.ES_REASON.hisid != '' && data.ES_REASON.rdesc != '') {
+                $("#es_reqdt").val(kendo.toString(kendo.parseDate(data.ES_REASON.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                $("#es_rdesc").val(data.ES_REASON.rdesc);
+                $(".reRequest").show();
+            }
+
+            // 반려사유
+            if (display && data.ES_OFF.rdesc != '') {
+                $("#rdesc").val(data.ES_OFF.rdesc).attr("readonly", "readonly");
+                $(".rejectReason").show();
+            }
+
+            // 신청자 정보
+            setEmpInfo(data.ES_EMP);
+            // 신청부서
+            setApprovalLine("ET_LINE1", data.ET_LINE1);
+        }
+
+        function setEmpInfo(emp) {
+            $("#pernrt").val(emp.pernrt);
+            $("#ename").val(emp.ename);
+            $("#orgtx").val(emp.orgtx);
+            $("#jikwi").val(emp.jikwi);
+            $("#jikch").val(emp.jikch);
+            $("#dat02").val(kendo.toString(kendo.parseDate(emp.dat02, 'yyyyMMdd'),'yyyy.MM.dd'));
+        }
+
+    </script>
+<!--[if lt IE 9]>
+<script type="text/javascript" src="js/html5shiv.js"></script>
+<![endif]-->
+</head>
+<body>
+
+<section id="popup_wrap2">
+
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+           <h1>휴복직 · 단축근로 결재</h1>
+           <a href="javascript:top.window.close()" class="btn_close" title="닫기">닫기</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+
+        <!-- title -->
+        <h5>휴복직 · 단축근로 신청내역</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic" id="closeBtn">닫기</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <form id="approvalForm">
+        <div class="form_box">
+            <table class="form_basic">
+                <colgroup>
+                    <col width="190"/>
+                    <col width="130"/>
+                    <col width="*"/>
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <th scope="row">신청사원</th>
+                        <td colspan="2">
+                            <input type="text" class="k-textbox" id="pernr" name="pernr" readonly="readonly">
+                            <span id="hname" name="hname"></span>
+                            <!-- appid -->
+                            <input type="hidden" id="appid" name="appid">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">신청일자</th>
+                        <td colspan="2">
+                            <input id="reqdt" name="reqdt" type="text" disabled="ture" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴복직 · 단축근로 구분</th>
+                        <td colspan="2">
+                            <input type="text" class="k-textbox" id="ET_MASTY" name="masty" readonly="readonly"/>
+                        </td>
+                    </tr>
+                </tbody>
+
+                <!-- 휴복직 구분 선택 -->
+                <tbody id="tbody_massn" style="display:none;">
+                    <tr>
+                        <th scope="row">휴복직 구분</th>
+                        <td colspan="2">
+                            <input type="text" class="k-textbox" id="ET_MASSN" name="zmassn" readonly="readonly" />
+                        </td>
+                    </tr>
+                </tbody>
+                <!-- //휴복직 구분 -->
+
+                <!-- 휴복직/단축근로 구분 : 휴직/휴직연장 -->
+                <tbody class="tbody_input" id="tbody1" style="display:none;">
+                    <tr>
+                        <th scope="row">휴직사유</th>
+                        <td colspan="2">
+                            <input class="fl k-textbox" type="text" id="ET_MASSG1" readonly="readonly" />
+                            <!--자녀명-->
+                            <dl class="form_inner_group fl dl_zbrname" style="display:none;">
+                                <dt>자녀명</dt>
+                                <%--<dd><a href="#" class="btn_option btn_zbrname">선택</a></dd>--%>
+                                <dd><input type="text" class="k-textbox" id="zbrname1" readonly="readonly"></dd>
+                            </dl>
+                            <!--출산예정일-->
+                            <dl class="form_inner_group fl dl_chddt" style="display:none;">
+                                <dt>출산예정일</dt>
+                                <dd>
+                                    <input id="chddt1" name="chddt1" type="text" disabled="ture" />
+                                </dd>
+                            </dl>
+                            <!--최근 휴직신청 기간-->
+                            <dl class="form_inner_group fl div_period" style="display:none;">
+                                <dt>최근 휴직신청 기간 : </dt>
+                                <dd><span id="span_period"></span></dd>
+                            </dl>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">신청기간</th>
+                        <td colspan="2">
+                            <input id="suspfrm1" name="suspfrm1" type="text" disabled="ture" /> ~
+                            <input id="suspto1" name="suspto1" type="text" disabled="ture" />
+                            <span class="offday"></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">우편번호</th>
+                        <td colspan="2"><input type="text" class="w_zipcode k-textbox"  id="pstlz" readonly="readonly" ></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">주소</th>
+                        <td colspan="2"><input type="text" class="all k-textbox" id="addr1" readonly="readonly"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">상세주소 1</th>
+                        <td colspan="2"><input type="text" class="all k-textbox" id="stras" readonly="readonly"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">상세주소 2</th>
+                        <td colspan="2"><input type="text" class="all k-textbox" id="locat" readonly="readonly"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴직중 연락처</th>
+                        <td colspan="2"><input type="text" class="k-textbox" id="susptel" readonly="readonly"></td>
+                    </tr>
+                </tbody>
+                <!--// 휴직/휴직연장 -->
+
+                <!-- 휴복직/단축근로 구분 : 복직 -->
+                <tbody class="tbody_input" id="tbody2" style="display:none;">
+                    <tr>
+                        <th scope="row">복직희망일</th>
+                        <td colspan="2">
+                            <input id="refrm" name="refrm" type="text" disabled="ture" />
+                        </td>
+                    </tr>
+                </tbody>
+                <!--// 복직 -->
+
+                <!-- 휴복직/단축근로 구분 : 단축근로 -->
+                <tbody class="tbody_input" id="tbody4" style="display:none;">
+                    <tr>
+                        <th scope="row">신청기간</th>
+                        <td colspan="2">
+                            <input id="begda" name="begda" type="text" disabled="ture" /> ~
+                            <input id="endda" name="endda" type="text" disabled="ture" />
+                            <%--<span class="offday"></span>--%>
+                        </td>
+                    </tr>
+                    <tr id="tbody_swobj" style="display: none;">
+                        <th scope="row">자녀명</th>
+                        <td colspan="2">
+                            <input type="text" class="k-textbox" id="zbrname2" readonly="readonly" >
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">단축시간 선택</th>
+                        <td colspan="2">
+                            <input type="text" class="k-textbox" id="ET_SRTTY" name="srtty" style="width:230px" readonly="readonly" />
+                        </td>
+                    </tr>
+                    <!-- <tr>
+                        <th scope="row">단축근로시작/종료시각 1</th>
+                        <td colspan="2">
+                             <input type="text" class="w_time k-textbox" id="pwsbg" readonly="readonly" style="width:70px">
+                             ~ <input type="text" class="w_time k-textbox" id="pwsed" readonly="readonly" style="width:70px">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">단축근로시간</th>
+                        <td colspan="2">
+                            <input type="text" class="w_time k-textbox" id="pwsol" readonly="readonly"> 시간
+                        </td>
+                    </tr> -->
+                </tbody>
+                <!--// 단축근로 -->
+
+                <!-- 첨부파일 -->
+                <tbody id="tbody_file" style="display:none;">
+                    <tr>
+                        <th scope="row">파일첨부</th>
+                        <td colspan="2" class="file_box">
+                            <table>
+                            <colgroup>
+                                <col width="10%"/>
+                                <col width="*"/>
+                            </colgroup>
+                            <tr>
+                                <th>첨부 1</th>
+                                <td id="attach1"></td>
+                            </tr>
+                            <tr id="file_tr">
+                                <th>첨부 2</th>
+                                <td id="attach2"></td>
+                            </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+                <!--// 첨부파일 -->
+                <!-- 휴복직/단축근로 구분 : 복직-휴직내역 -->
+                <tbody class="tbody_input" id="tbody3" style="display:none;">
+                    <tr>
+                        <th scope="row" rowspan="2">휴직내역</th>
+                        <th scope="row">휴직사유</th>
+                        <td>
+                            <input class="fl k-textbox" type="text" id="ET_MASSG2" readonly="readonly" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">신청기간</th>
+                        <td>
+                            <input id="suspfrm2" name="suspfrm2" type="text" disabled="ture" /> ~
+                            <input id="suspto2" name="suspto2" type="text" disabled="ture" />
+                            <span class="offday"></span>
+                        </td>
+                    </tr>
+                </tbody>
+                <!--// 복직-휴직내역 -->
+            </table>
+        </div>
+
+        <image id="image1" />
+
+        <!-- title -->
+        <h5 class="rejectReason" style="display: none">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" class="all"  id="rdesc" style="width: 100%" maxlength="255" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5>신청자 정보</h5>
+        <!-- //title -->
+        <div class="form_box">
+            <table class="form_basic">
+                <colgroup>
+                    <col width="10%"/>
+                    <col width="20%"/>
+                    <col width="10%"/>
+                    <col width="30%"/>
+                    <col width="10%"/>
+                    <col width="*"/>
+                </colgroup>
+                <tr>
+                    <th>사번</th>
+                    <td><input id="pernrt"  type="text" class="k-textbox" readonly="readonly"/></td>
+                    <th>성명</th>
+                    <td><input id="ename"  type="text" class="k-textbox" readonly="readonly" style="width:99%" /></td>
+                    <th>소속</th>
+                    <td><input id="orgtx"  type="text" class="k-textbox" readonly="readonly"  style="width:99%" /></td>
+                </tr>
+                <tr>
+                    <th>직위</th>
+                    <td><input id="jikwi"  type="text" class="k-textbox" readonly="readonly"/></td>
+                    <th>직책</th>
+                    <td><input id="jikch" type="text" class="k-textbox" readonly="readonly"/></td>
+                    <th>그룹입사일</th>
+                    <td><input id="dat02"  type="text" class="k-textbox" readonly="readonly"/></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="area_divide mgT10">
+        <!-- title -->
+            <h5>결재라인</h5>
+            <!-- //title -->
+
+        <!-- approve -->
+            <div class="approve_box">
+                <div class="tb_box">
+
+                    <!-- title -->
+                    <h6>신청부서</h6>
+                    <!-- //title -->
+
+                    <div id="lineGrid1"></div>
+                </div>
+
+                <div class="tb_box">
+                    <!-- title -->
+                    <h6>담당부서</h6>
+                    <!-- //title -->
+
+                    <div id="lineGrid2"></div>
+                </div>
+            </div>
+            <!-- //approve -->
+        </div>
+
+        <!-- title -->
+        <h5 class="reRequest" style="display: none">재상신 정보</h5>
+        <!-- //title -->
+        <div class="form_box reRequest" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td>재상신 문건 <input id="es_reqdt" type="text" class="k-textbox" readonly="readonly" style="width:120px" /> 일자 반려건에 대한 재상신
+                </td>
+                </tr>
+                <tr>
+                    <!-- <td>반려사유<input type="text" class="all"  id="rdesc" style="width: 100%" maxlength="255" /></td> -->
+                    <td>반려사유 <input id="es_rdesc" type="text" class="k-textbox" readonly="readonly" style="width: 50%" /></td>
+                </tr>
+            </table>
+        </div>
+
+    </form>
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
