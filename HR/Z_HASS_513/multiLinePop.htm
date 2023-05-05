@@ -1,0 +1,593 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>연장 일괄업로드</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var csInfo = '<%=CS_INFO%>';
+        var pageCmd = '<%=FLAG%>';      // C : 등록
+        var list_box = '<%=LIST_BOX%>';
+        var it_plist = '<%=IT_PLIST%>';
+        var uid = '<%=uid%>';           // grid uid
+        var p_csInfo;
+        var p_isInfo;
+        var dataSource, grid;
+        var checkedData = [], savedData = [];;
+
+        $(document).ready(function() {
+            csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+            list_box = typeof list_box == 'object' ? list_box : $.parseJSON(list_box);
+            if (it_plist != '') it_plist = typeof it_plist == 'object' ? it_plist : $.parseJSON(it_plist);
+            setGrid();
+            setForm(pageCmd);
+            setInitParam();
+            setButton();
+        });
+
+        function setForm(pageCmd) {
+            $("input").each(function() {
+                $(this).val(csInfo[this.id]);
+            });
+
+            $("input.dropdownlist").each(function() {
+                var nm = this.name;
+                $(this).kendoDropDownList({
+                    dataSource: list_box[nm],
+                    dataTextField: "value",
+                    dataValueField: "key"
+                });
+            });
+        }
+
+        function setInitParam() {
+            p_isInfo = {
+                // datum: $("#datum").val().replace(/\./g, ''),
+                datum: csInfo.datum,
+                hflag: csInfo.hflag,
+                region: csInfo.region,
+                office: csInfo.office,
+                // pernr: $("#pernrt").val(),
+                reason: $("#reason").val(),
+                zgubun: opener.app.vData.CS_INFO.zgubun
+            };
+
+            p_csInfo = {
+                datum: csInfo.datum,
+                hflag: csInfo.hflag
+            };
+        }
+
+        function setButton() {
+            // 일괄적용
+            $("#applyBtn").click(function() {
+                // validation check
+                var isValid = true;
+                $("#inputForm .required").not("span").each(function() {
+                    if ( $(this).val() == "" || $(this).val() == null ) {
+                        alert( $(this).closest("td").prev().text() + " 값을 입력해주세요." );
+                        $(this).focus();
+                        isValid = false;
+                        return false;
+                    }
+                });
+
+                if($("#begth").val() == '00' && $("#begtm").val() == '00') {
+                    alert("시작시간은 00시 00분 이후로 입력해주세요.");
+                    isValid = false;
+                    return false;
+                }
+
+                if(!isValid) return;
+
+                // grid update
+                var dataItem = grid.dataSource.data();
+                if (dataItem.length == 0) {
+                    alert("일괄적용 대상이 없습니다.");
+                } else{
+                    for(var i=0; i<dataItem.length; i++) {
+                        dataItem[i].begth   = $("#begth").val();
+                        dataItem[i].begtm   = $("#begtm").val();
+                        dataItem[i].begt    = $("#begth").val() + $("#begtm").val();
+                        dataItem[i].endth   = $("#endth").val();
+                        dataItem[i].endtm   = $("#endtm").val();
+                        dataItem[i].endt    = $("#endth").val() + $("#endtm").val();
+                        dataItem[i].zpbegh1 = $("#zpbegh1").val();
+                        dataItem[i].zpbegm1 = $("#zpbegm1").val();
+                        dataItem[i].zpendh1 = $("#zpendh1").val();
+                        dataItem[i].zpendm1 = $("#zpendm1").val();
+                        dataItem[i].reason  = $("#reason").val();
+                    }
+                    $("select[name=begthSelectBox]").val($("#begth").val()).attr("selected", true);
+                    $("select[name=begtmSelectBox]").val($("#begtm").val()).attr("selected", true);
+                    $("select[name=endthSelectBox]").val($("#endth").val()).attr("selected", true);
+                    $("select[name=endtmSelectBox]").val($("#endtm").val()).attr("selected", true);
+                    $("select[name=zpbegh1SelectBox]").val($("#zpbegh1").val()).attr("selected", true);
+                    $("select[name=zpbegm1SelectBox]").val($("#zpbegm1").val()).attr("selected", true);
+                    $("select[name=zpendh1SelectBox]").val($("#zpendh1").val()).attr("selected", true);
+                    $("select[name=zpendm1SelectBox]").val($("#zpendm1").val()).attr("selected", true);
+                    $("select[name=reasonSelectBox]").val($("#reason").val()).attr("selected", true);
+
+                    $("span[name=begthSelectBox]").text($("#begth")[0].value);
+                    $("span[name=begtmSelectBox]").text($("#begtm")[0].value);
+                    $("span[name=endthSelectBox]").text($("#endth")[0].value);
+                    $("span[name=endtmSelectBox]").text($("#endtm")[0].value);
+                    $("span[name=zpbegh1SelectBox]").text($("#zpbegh1")[0].value);
+                    $("span[name=zpbegm1SelectBox]").text($("#zpbegm1")[0].value);
+                    $("span[name=zpendh1SelectBox]").text($("#zpendh1")[0].value);
+                    $("span[name=zpendm1SelectBox]").text($("#zpendm1")[0].value);
+                    $("span[name=reasonSelectBox]").text($("#reason").closest("td").find("span.k-input")[0].innerText);
+                }
+            });
+
+            // 저장
+            $("#saveBtn").click(function() {
+                var isValid = true;
+                var selectRows = grid.table.find("input.checkbox:checked");
+
+                if(selectRows.length > 0) {
+                    for(var i=0; i<selectRows.length; i++) {
+                        kendo.ui.progress($("#container"), isValid);
+                        var dataItem = grid.dataItem($(selectRows[i]).closest("tr"));
+                        var begTime = (dataItem.begt != (dataItem.begth + dataItem.begtm)) ? dataItem.begth + dataItem.begtm : dataItem.begt;
+                        var endTime = (dataItem.endt != (dataItem.endth + dataItem.endtm)) ? dataItem.endth + dataItem.endtm : dataItem.endt;
+
+                        // validation check
+                        if(isNaN(begTime)) {
+                            alert("시작시간 값을 입력해주세요.");
+                            isValid = false;
+                            kendo.ui.progress($("#container"), isValid);
+                            return;
+                        }
+
+                        if(isNaN(endTime)) {
+                            alert("종료시간 값을 입력해주세요.");
+                            isValid = false;
+                            kendo.ui.progress($("#container"), isValid);
+                            return;
+                        }
+
+                        if(begTime == '0000' && dataItem.begt == '0000') {
+                            alert("시작시간은 00시 00분 이후로 입력해주세요.");
+                            isValid = false;
+                            kendo.ui.progress($("#container"), isValid);
+                            return;
+                        }
+                        // 고정시간, 총시간 출력
+                        checkPtime(dataItem);
+                    }
+                    // 저장 체크
+                    if(isValid) checkSave(checkedData);
+                } else {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                    isValid = false;
+                    kendo.ui.progress($("#container"), isValid);
+                    return;
+                }
+
+            });
+        }
+
+        function checkPtime(dataItem) {
+            p_isInfo.pernr   = dataItem.pernr;
+            p_csInfo.pernr   = dataItem.pernr;
+            p_csInfo.pernrt  = dataItem.pernr;
+            p_csInfo.ename   = dataItem.ename;
+            p_csInfo.begt    = (dataItem.begt != (dataItem.begth + dataItem.begtm)) ? dataItem.begth + dataItem.begtm : dataItem.begt;
+            p_csInfo.endt    = (dataItem.endt != (dataItem.endth + dataItem.endtm)) ? dataItem.endth + dataItem.endtm : dataItem.endt;
+            p_csInfo.begth   = dataItem.begth;
+            p_csInfo.begtm   = dataItem.begtm;
+            p_csInfo.endth   = dataItem.endth;
+            p_csInfo.endtm   = dataItem.endtm;
+            p_csInfo.zpbegh1 = dataItem.zpbegh1;
+            p_csInfo.zpbegm1 = dataItem.zpbegm1;
+            p_csInfo.zpendh1 = dataItem.zpendh1;
+            p_csInfo.zpendm1 = dataItem.zpendm1;
+            p_csInfo.reason  = (dataItem.reason == undefined) ? list_box.ET_REASON[0].key : dataItem.reason;
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_CHECK_PTIME");
+            cfc.addParam('IS_INFO', p_isInfo, true);
+            cfc.addParam('CS_INFO', p_csInfo, true);
+            $.ajax({
+                url: URL.callFunction,
+                async: false,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    checkedData.push(data.CS_INFO);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    // kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function checkSave(dataItems) {
+            var _subrc;
+            var s_index = 1;
+            for(var i=0; i<dataItems.length; i++) {
+                if(_subrc == "4") break;
+                p_isInfo.pernr   = dataItems[i].pernr;
+                p_csInfo.pernr   = dataItems[i].pernr;
+                p_csInfo.pernrt  = dataItems[i].pernr;
+                p_csInfo.ename   = dataItems[i].ename;
+                p_csInfo.reason  = dataItems[i].reason;
+                p_csInfo.tott    = dataItems[i].tott;
+                p_csInfo.tottx   = dataItems[i].tottx;
+                p_csInfo.ztimes  = dataItems[i].ztimes;
+                p_csInfo.zjikgp  = dataItems[i].zjikgp;
+                p_csInfo.begt    = dataItems[i].begt;
+                p_csInfo.endt    = dataItems[i].endt;
+                p_csInfo.begth   = dataItems[i].begth;
+                p_csInfo.begtm   = dataItems[i].begtm;
+                p_csInfo.endth   = dataItems[i].endth;
+                p_csInfo.endtm   = dataItems[i].endtm;
+                p_csInfo.zpbegh1 = dataItems[i].zpbegh1;
+                p_csInfo.zpbegm1 = dataItems[i].zpbegm1;
+                p_csInfo.zpendh1 = dataItems[i].zpendh1;
+                p_csInfo.zpendm1 = dataItems[i].zpendm1;
+                p_csInfo.reason  = dataItems[i].reason;
+                p_csInfo.zwork   = '연장근무';
+                p_csInfo.zgoal   = '연장근무';
+
+                var cfc = new CallFuncClass();
+                cfc.setFuncName("Z_HR_SV_CHECK_SAVE_PERNR");
+                cfc.addParam('IV_PFLAG', pageCmd, false);
+                cfc.addParam('IS_INFO', p_isInfo, true);
+                cfc.addParam('CS_INFO', p_csInfo, true);
+                if (it_plist == "") {
+                    cfc.addParam('IT_PLIST', it_plist, false);
+                } else {
+                    cfc.addParam('IT_PLIST', it_plist, true);
+                }
+                cfc.addParam('IV_SINDEX', s_index, false);
+
+                $.ajax({
+                    url: URL.callFunction,
+                    async: false,
+                    dataType: "jsonp",
+                    jsonp : "callback",
+                    data: cfc.getData(),
+                    type: "POST",
+                    success: function(data) {
+                        _subrc = data.ES_RESULT.subrc.trim();
+                        if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                            savedData.push(data.CS_INFO);
+                            s_index++;
+                        } else {
+                          alert(data.ES_RESULT.message);
+                          kendo.ui.progress($("#container"), false);
+                          // data initialization
+                          checkedData = [];
+                          savedData = [];
+                          return;
+                        }
+                    },
+                    error: function () {
+                        alert("error");
+                    },
+                    beforeSend: function() {
+                        kendo.ui.progress($("#container"), true);
+                    },
+                    complete: function() {
+                        // kendo.ui.progress($("#container"), false);
+                    }
+                });
+            }
+
+            // 라인 추가
+            if(checkedData.length != savedData.length) {
+                kendo.ui.progress($("#container"), false);
+                // data initialization
+                checkedData = [];
+                savedData = [];
+                return;
+            } else {
+                for(var i=0; i<savedData.length; i++) {
+                    opener.dataSource.add(savedData[i]);  // grid 추가
+                    if(savedData.length == (i+1)) {
+                        opener.app.setToth();             // 총 시간 세팅
+                        opener.app.setAppLine();          // 결재라인
+                        window.close();
+                    }
+                }
+            }
+        }
+
+        function setGrid() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_GET_H_SEARCH_PERNR3");
+            cfc.addParam('IV_OBJID',  csInfo.office, false);
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: cfc.getData()
+                    }
+                },
+                schema: {
+                    data: "ET_PERNR",
+                    total: "ET_PERNR.length",
+                    model: {
+                        fields: {
+                            mgtyn   : { editable: false },
+                            pernrt  : { editable: false },
+                            ename   : { editable: false },
+                            orgtx   : { editable: false },
+                            jikwi   : { editable: false },
+                            begth   : { type: "string" },
+                            begtm   : { type: "string" },
+                            endth   : { type: "string" },
+                            endtm   : { type: "string" },
+                            zpbegh1 : { type: "string" },
+                            zpbegm1 : { type: "string" },
+                            zpendh1 : { type: "string" },
+                            zpendm1 : { type: "string" },
+                            reason  : { type: "string" }
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 500,
+                sortable: false,
+                resizable: true,
+                pageable: false,
+                navigatable: true,
+                selectable: true,
+                editable: true,
+                columns: [
+                    { title: "<input type='checkbox' id='selectAll'>", width: 30, template: "<input type='checkbox' class='checkbox'/>"},
+                    { field: "pernrt", title: "사번", width: 60},
+                    { field: "ename",  title: "성명", width: 60},
+                    { field: "orgtx",  title: "부서", width: 100},
+                    { field: "jikwi",  title: "직급", width: 80},
+                    { field: "begt",   title: "시작", columns:
+                        [   {field: "begth", title: " ", width: 60, attributes:{class: "edit"}, editor: setUzeitEditor, template:"#=getDropDownList('ET_UZEIT', begth, 'begthSelectBox')#"},
+                            {field: "begtm", title: " ", width: 60, attributes:{class: "edit"}, editor: setMinuteEditor, template:"#=getDropDownList('ET_MINUTE', begtm, 'begtmSelectBox')#"}
+                        ]},
+                    { field: "endt",   title: "종료", columns:
+                        [   {field: "endth", title: " ", width: 60, attributes:{class: "edit"}, editor: setUzeitEditor, template:"#=getDropDownList('ET_UZEIT', endth, 'endthSelectBox')#"},
+                            {field: "endtm", title: " ", width: 60, attributes:{class: "edit"}, editor: setMinuteEditor, template:"#=getDropDownList('ET_MINUTE', endtm, 'endtmSelectBox')#"}
+                        ]},
+                    { field: "begt",   title: "휴무1 시작", columns:
+                        [   {field: "zpbegh1", title: " ", width: 60, attributes:{class: "edit"}, editor: setUzeitEditor, template:"#=getDropDownList('ET_UZEIT', zpbegh1, 'zpbegh1SelectBox')#"},
+                            {field: "zpbegm1", title: " ", width: 60, attributes:{class: "edit"}, editor: setMinuteEditor, template:"#=getDropDownList('ET_MINUTE', zpbegm1, 'zpbegm1SelectBox')#"}
+                        ]},
+                    { field: "endt",   title: "휴무1 종료", columns:
+                        [   {field: "zpendh1", title: " ", width: 60, attributes:{class: "edit"}, editor: setUzeitEditor, template:"#=getDropDownList('ET_UZEIT', zpendh1, 'zpendh1SelectBox')#"},
+                            {field: "zpendm1", title: " ", width: 60, attributes:{class: "edit"}, editor: setMinuteEditor, template:"#=getDropDownList('ET_MINUTE', zpendm1, 'zpendm1SelectBox')#"}
+                        ]},
+                    { field: "reason", title: "사유", width: 100, attributes:{class: "edit"}, editor: setReasonEditor, template: "#=getDropDownList('ET_REASON', reason, 'reasonSelectBox')#"}
+                ]
+            }).data("kendoGrid");
+
+            // table thead 2nd line remove
+            grid.thead.find("tr:eq(1)").remove();
+
+            grid.bind("dataBound", function(e) {
+                // 그리드 데이터 없을때
+                var msg = "사원내역이 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.data().length == 0) {
+                    var colCount = grid.columns.length;
+                    $(e.sender.wrapper)
+                        .find('tbody')
+                        .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                } else{
+                    // 그리드 멀티 선택
+                    grid.tbody.find("tr").css("cursor","pointer").bind("click", function() {
+                        $(this).find(".checkbox").trigger("click");
+                    });
+                    grid.tbody.find(".checkbox").bind("change", function (e) {
+                        $(e.target).closest("tr").toggleClass("k-state-selected");
+                        if ($(this).is(":checked")) {
+                            $(e.target).closest("tr").find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                        } else {
+                            $(e.target).closest("tr").find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                        }
+                    }).bind("click", function(e) {
+                        event.stopPropagation();
+                    });
+                }
+
+                // 전체 체크
+                grid.thead.find("#selectAll").prop("checked", false);
+                grid.thead.find("#selectAll").unbind("click");
+                grid.thead.find("#selectAll").bind("click", function() {
+                    if ($(this).is(":checked")) {
+                        grid.tbody.find(".checkbox").prop("checked", true);
+                        grid.tbody.find(".checkbox").closest("tr").addClass("k-state-selected");
+                        grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                    } else {
+                        grid.tbody.find(".checkbox").prop("checked", false);
+                        grid.tbody.find(".checkbox").closest("tr").removeClass("k-state-selected");
+                        grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                    }
+                });
+
+                grid.tbody.find("tr td").css("position","relative");
+                grid.tbody.find("td a.btn_desc").click(function() {
+                    openRejectReason('setRdesc');
+                });
+            });
+        }
+
+        function setUzeitEditor(container, options){
+            var dataItem = grid.dataItem(container.closest("tr"));
+            if(container.hasClass('edit')) {
+                var DropList= $('<input name="' + options.field + '" style="width:60px"/>')
+                    .appendTo(container)
+                    .kendoDropDownList({
+                        dataTextField: "value",
+                        dataValueField: "key",
+                        dataSource: list_box.ET_UZEIT,
+                        change: function(e) {
+                            var dataItem = grid.dataItem(grid.select());
+                            dataItem.set(options.field, this.value());
+                        }
+                    }).data("kendoDropDownList");
+                DropList.open();
+            } else {
+                container.text(options.model[options.field]);
+            }
+        }
+
+        function setMinuteEditor(container, options){
+            var dataItem = grid.dataItem(container.closest("tr"));
+            if(container.hasClass('edit')) {
+                var DropList= $('<input name="' + options.field + '" style="width:60px"/>')
+                    .appendTo(container)
+                    .kendoDropDownList({
+                        dataTextField: "value",
+                        dataValueField: "key",
+                        dataSource: list_box.ET_MINUTE,
+                        change: function(e) {
+                            var dataItem = grid.dataItem(grid.select());
+                            dataItem.set(options.field, this.value());
+                        }
+                    }).data("kendoDropDownList");
+                DropList.open();
+            } else {
+                container.text(options.model[options.field]);
+            }
+        }
+
+        function setReasonEditor(container, options){
+            var dataItem = grid.dataItem(container.closest("tr"));
+            if(container.hasClass('edit')) {
+                var DropList= $('<input name="' + options.field + '"/>')
+                    .appendTo(container)
+                    .kendoDropDownList({
+                        dataTextField: "value",
+                        dataValueField: "key",
+                        dataSource: list_box.ET_REASON,
+                        change: function(e) {
+                            var dataItem = grid.dataItem(grid.select());
+                            dataItem.set(options.field, this.value());
+                        }
+                    }).data("kendoDropDownList");
+                DropList.open();
+            } else {
+                container.text(options.model[options.field]);
+            }
+        }
+
+        function getDropDownList(objId, value, name) {
+            var sResult = "<span class='fakebox text_select' name='"+name+"'>";
+            if(value == '' || value == undefined || typeof(value) == 'object') {
+                sResult += list_box[objId][0].value;
+                sResult += "</span>";
+                return sResult;
+            }
+
+            for(var i=0; i<list_box[objId].length; i++) {
+                if(list_box[objId][i].key == value) {
+                    sResult += list_box[objId][i].value;
+                    sResult += "</span>";
+                    return sResult;
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+<section id="popup_wrap2">
+
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+            <h1>연장 일괄업로드 세부내역</h1>
+            <a href="javascript:top.window.close()" class="btn_close">Close</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+        <!-- form -->
+        <form id="inputForm">
+            <!-- search -->
+            <div class="search_box">
+            <table>
+                <colgroup>
+                    <col width="80" />
+                    <col width="160" />
+                    <col width="80" />
+                    <col width="160" />
+                    <col width="80" />
+                    <col width="160" />
+                    <col width="*" />
+                </colgroup>
+                <tr>
+                    <th scope="row">시작시간</th>
+                    <td>
+                        <input type="text" class="w_time hh required dropdownlist" name="ET_UZEIT" id="begth" />
+                        : <input type="text" class="w_time mm required dropdownlist" name="ET_MINUTE" id="begtm" />
+
+                    </td>
+                    <th scope="row">종료시간</th>
+                    <td>
+                        <input type="text" class="w_time hh required dropdownlist" name="ET_UZEIT" id="endth" />
+                        : <input type="text" class="w_time mm required dropdownlist" name="ET_MINUTE" id="endtm" />
+
+                    </td>
+                    <th scope="row">사유</th>
+                    <td>
+                        <input type="text" class="required dropdownlist" name="ET_REASON" id="reason" />
+                    </td>
+                    <td>
+                        <button type="button" id="applyBtn" class="btn_search">일괄적용</button>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">휴무1</th>
+                    <td>
+                        <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpbegh1" />
+                         : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpbegm1" />
+                    </td>
+                    <th scope="row">종료시간</th>
+                    <td>
+                        <input type="text" class="w_time hh dropdownlist" name="ET_UZEIT" id="zpendh1" />
+                         : <input type="text" class="w_time mm dropdownlist" name="ET_MINUTE" id="zpendm1" />
+                    </td>
+                </tr>
+            </table>
+            </div>
+        </form>
+        <!-- //search -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic_b" id="saveBtn">저장</button>
+            <button type="button" class="btn_basic" onclick="top.window.close()">닫기</button>
+        </div>
+        <!-- //button -->
+
+        <!-- grid -->
+        <div id="grid"></div>
+        <!-- //grid -->
+
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
