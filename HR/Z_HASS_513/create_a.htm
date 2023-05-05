@@ -1,0 +1,86 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<title>근무관리시스템 M Plan</title>
+<%@include file="../z_ess_021/inc_header.htm" %>
+<script>
+ 	var grid, dataSource;
+  var list_box = '<%=LIST_BOX%>';
+  list_box = typeof list_box == 'object' ? list_box : $.parseJSON(list_box);
+
+  var conf = {
+            navi: {
+              lv1: '근무관리',
+                lv2: '연장근로(서비스)',
+                lv3: '실적신청'
+            },
+            FILE_LIST: [{id: 1, name: '계획첨부'}, {id: 2, name: '실적첨부'}]
+  };
+
+  function setGrid(ds) {
+        grid = $("#grid").kendoGrid({
+            dataSource: ds,
+            autoBind: true,
+            //height: 400,
+            sortable: false,
+            resizable: true,
+            pageable: false,
+            navigatable: true,
+            selectable: true,
+            columns: [
+                { field: "worktytx", title: "근태", width: 70, template: "#=getTextByValue('ET_WORKTY', hflag)#"},
+                { field: "pernrt", title: "사번", width: 70},
+                { field: "zjikgp", title: "직급", width: 80},
+                { field: "ename", title: "성명", width: 80},
+                { field: "begt1", title: "계획시작", width: 70, template: "#=kendo.toString(kendo.parseDate(begt1, 'HHmmss'), 'HH:mm')#"},
+                { field: "endt1", title: "계획종료", width: 70, template: "#=kendo.toString(kendo.parseDate(endt1, 'HHmmss'), 'HH:mm')#"},
+                { field: "tottx1", title: "계획총시간", width: 100},
+                { field: "zstatu", title: "구분", width: 70
+                    ,template: function(data) {
+                        if (data.zstatu=='ICON_LED_YELLOW') {
+                            var aflags = '<span style="color:orange; font-size:13px; ">'+ '▲' +'</span>';
+                            return aflags;
+                        } else {
+                            var aflags = '<span style="color:green; font-size:13px; ">'+ '●' +'</span>';
+                            return aflags;
+                        }
+                    }
+                },
+                { field: "begt", title: "시작", width: 70, template: "#=kendo.toString(kendo.parseDate(begt, 'HHmmss'), 'HH:mm')#"},
+                { field: "endt", title: "종료", width: 70, template: "#=kendo.toString(kendo.parseDate(endt, 'HHmmss'), 'HH:mm')#"},
+                { field: "tottx", title: "총시간", width: 100},
+                { field: "reasontx", title: "사유", width: 90,  template: "#=getTextByValue('ET_REASON', reason)#"},
+                { field: "zwork", title: "작업내용", width: 100},
+                { field: "zgoal", title: "작업목표", width: 100},
+                { field: "zremark", title: "비고", width: 100}
+                // attributes: {style: 'white-space: nowrap'}
+            ]
+        }).data("kendoGrid");
+
+        dataSource = grid.dataSource;
+
+        // tooltip
+        $("#grid").kendoTooltip({
+            filter: "td:nth-child(13),td:nth-child(14),td:nth-child(15)",
+            content: function(e){
+                var text = $(e.target).text();
+                return '<div style="width: ' + text.length * .6 + 'em; max-width: 14em">' + text + '</div>';
+            }
+        }).data("kendoTooltip");
+    }
+
+    function getTextByValue(objId, value) {
+        for (var i=0; i < list_box[objId].length; i++) {
+            if (list_box[objId][i].key == value) {
+                return list_box[objId][i].value;
+            }
+        }
+    }
+
+</script>
+</head>
+<body>
+<%@include file="../z_hass_513/common_layout.htm" %>
+</body>
+</html>
