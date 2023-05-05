@@ -1,0 +1,103 @@
+<%@page language="abap"%>
+<!doctype html>
+<html lang="ko">
+<head>
+    <title>신청이력조회</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var dataSource, grid;
+        var pernr = '<%=IV_PERNR%>';
+        var awart = '<%=IV_AWART%>';
+
+        $(document).ready(function() {
+            setGrid();
+        });
+
+        function setGrid() {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 10,
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data: "ET_ABS_LIST",
+                    total: "ET_ABS_LIST.length",
+                    model: {
+                        fields: { }
+                    }
+                }
+            });
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 430,
+                sortable: false,
+                resizable: true,
+                pageable: true,
+                navigatable: true,
+                selectable: true,
+                columns: [
+                    lineClick,
+                    { field: "atext", title: "휴무유형", width: 140},
+                    { title: "기간",
+                      columns: [
+                        { field: "begda", title:"시작일", template: "#= begda == '00000000' ? '' : kendo.toString(kendo.parseDate(begda, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                        { field: "endda",  title:"종료일", template: "#= endda == '00000000' ? '' : kendo.toString(kendo.parseDate(endda, 'yyyyMMdd'), 'yyyy.MM.dd') #"}
+                        ]
+                    }
+                ]
+            }).data("kendoGrid");
+            // 그리드 데이터 없을때
+            grid.bind("dataBound", function(e) {
+                var msg = "휴가 신청이력이 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    $(e.sender.wrapper).find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + grid.columns.length + '" class="no-data">' + msg + '</td></tr>');
+                } else {
+                    grid.tbody.find("tr").css("cursor","pointer");
+                }
+            });
+        }
+
+        function getListData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_GET_ABSENCE_HISTORY");
+            cfc.addParam("IV_PERNR", pernr, false);
+            cfc.addParam("IV_AWART", awart, false);
+
+            return cfc.getData();
+        }
+    </script>
+</head>
+<body>
+<section id="popup_wrap2">
+
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+            <h1>신청이력</h1>
+            <a href="javascript:top.window.close()" class="btn_close">Close</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+        <!-- list -->
+        <div id="grid"></div>
+        <!-- //list -->
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
