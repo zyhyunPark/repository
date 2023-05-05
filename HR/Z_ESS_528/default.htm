@@ -1,0 +1,381 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html lang="ko">
+<html>
+<head>
+    <title>근무관리시스템 M Plan</title>
+<%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var cymd;
+        var ivFinfg = '';
+        var ivHass = '';
+        var calendar;
+
+        $(document).ready(function() {
+            getYearEndInfo();
+            $("#sDt").val(cymd.format('YYYY'));
+            setSearchBox();
+            setForm();
+            initCreate('', $("#sDt").val());
+        });
+
+        function getYearEndInfo() {             /* 마감일 및 마감여부 체크 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PTS_GET_YEAR_ENDDT");
+            cfc.addParam('I_DATUM', '<%=sy-datum(8)%>', false);
+
+            data = callSyncData(cfc);
+            ivFinfg = data.E_FINFG;
+            cymd = (ivFinfg== 'X')? moment(data.E_FINDT, 'YYYYMMDD') : moment('<%=sy-datum(8)%>','YYYYMMDD');
+        }
+
+        function setSearchBox() {               /* 검색 세팅 */
+            $("#sDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy",
+                depth: "decade",
+                start: "decade"
+            });
+
+            $("#searchBtn").click(function() {
+                initCreate('', $("#sDt").val());
+            });
+        }
+
+        function setForm() {                    /* 달력 세팅 */
+          calendar = new Calendar($("#calendarDiv"));
+          calendar.setDate(cymd.format('YYYY'), '01', '01');
+          calendar.init();
+        }
+
+        function getDisplayData(type, yyyy) {  /* 헤더/일별 데이터 조회 function 호출 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PTS_GET_INFO_DATA");
+            cfc.addParam('IV_PERNR', '', false);
+            cfc.addParam('IV_YEAR', yyyy, false);
+            return cfc.getData();
+        }
+
+        function initCreate(type, yyyy) {
+            // 초기화
+            $('#info_pyear').text(""); // 발생연차
+            $('#info_pyear1').text("");// 발생연차(대여연차)
+            $('#info_pmon').text("");  // 발생월차
+
+            $('#info_uyear').text(""); // 사용연차
+            $('#info_umon').text("");  // 사용월차
+
+            $('#info_ryear').text(""); // 잔여연차
+            $('#info_rmon').text("");  // 잔여월차
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data : getDisplayData(type, yyyy),
+                type: "POST",
+                success: function(data) {
+                if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                    // csInfo.pernr = data.ET_DETAIL[0].pernr;
+                    // csInfo.kztim = data.ET_DETAIL[0].kztim;
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+                setCreate(data, type);
+            },
+            error: function () {
+                alert("error");
+            },
+            beforeSend: function() {
+                kendo.ui.progress($("#container"), true);
+            },
+            complete: function() {
+                kendo.ui.progress($("#container"), false);
+            }
+          });
+        }
+
+        function setCreate(data, type) {
+            calendar.initDate();
+            calendar.setSchedule(data);
+        }
+    </script>
+</head>
+<body>
+    <section id="container">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>근무관리</span>
+            <span>근태현황</span>
+            <strong>조회</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>근무관리</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>근태현황 / 조회</h4>
+            <!-- //title -->
+
+            <!-- title -->
+            <h5>근태현황 조회</h5>
+            <!-- //title -->
+
+            <!-- search -->
+            <div class="search_box">
+                <table>
+                    <colgroup>
+                        <col width="10%" />
+                        <col width="*" />
+                    </colgroup>
+                    <tr>
+                        <th scope="row">조회연도</th>
+                        <td>
+                            <input type="text" id="sDt" disabled="ture"/>
+                            <!-- <button type="button" id="searchBtn" class="btn_search">검색</button> -->
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- list -->
+            <table class="list_basic">
+                <colgroup>
+                    <col width="">
+                    <col width="">
+                    <col width="">
+                    <col width="">
+                    <col width="">
+                    <col width="">
+                    <col width="">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th scope="col" rowspan="2">휴가<br>내역</th>
+                        <th scope="col" colspan="2">발생일수</th>
+                        <th scope="col" colspan="2">사용일수</th>
+                        <th scope="col" colspan="2">잔여일수</th>
+                    </tr>
+                    <tr>
+                        <th scope="col">연차</th>
+                        <th scope="col">월차</th>
+                        <th scope="col">연차</th>
+                        <th scope="col">월차</th>
+                        <th scope="col">연차</th>
+                        <th scope="col">월차</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">계</th>
+                        <td class="tc" id="pyear"><span id="info_pyear"></span> (<span id="info_pyear1"></span>)</td>
+                        <td class="tc" id="pmon"><span id="info_pmon"></span></td>
+                        <td class="tc"><span id="info_uyear"></span></td>
+                        <td class="tc"><span id="info_umon"></span></td>
+                        <td class="tc"><span id="info_ryear"></span></td>
+                        <td class="tc"><span id="info_rmon"></span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <!--// list -->
+
+            <!-- dateCheck -->
+            <div class="restcalendar_box" id="restcalendarTable"></div>
+            <!-- //dateCheck -->
+
+          </article>
+          <!-- //contents -->
+    </section>
+    <script>
+    var Calendar = function(container) {    /* calendar 생성 */
+        var scheduleObject=new Array();
+        this.now_today = new Date();
+        this.year = this.now_today.getFullYear();
+        this.month = this.getNumberspace(this.now_today.getMonth() + 1);
+        this.day = this.now_today.getDate();
+        this.day_max = this.getDaymax(this.year, this.month-1);
+        this.container = container;
+    };
+
+    Calendar.prototype = {
+        init : function() {             /* calendar initialize */
+            this.container.html(this.mkCaption(this));
+        },
+        setDate : function(y,m,d) {     /* 날짜 세팅 */
+            this.year = y;
+            this.month = m;
+            this.day = d;
+        },
+        mkCaption : function(e) {       /* 화면 그리기 */
+            var owner = e;
+            var mkHtml = "";
+            // (row, col) = (월, 일)
+            var rowBeg = 0;
+            var rowEnd = 12;
+            var colBeg = 0;
+            var colEnd = 31;
+            var tagId;
+            var tagClass='cal_blank';
+            var iDayMax;  // 월에 포함되지 않는 일자(ex: 20180231)
+
+            for(var i=rowBeg; i<=rowEnd; i++) {
+                var strYear, strMon, strDay;
+                iDayMax = this.getDaymax(this.year, (i-1));
+                strYear= this.year;
+                strMon = ''+i;
+                if(strMon<10) strMon = '0' + strMon;
+                if(i==0) {              // table 범례(A:휴무, P:근무, T: 연장근로)
+                    mkHtml += '<ul class="work_notes">';
+                    mkHtml += '<li class="work_type01">휴무</li>';
+                    mkHtml += '<li class="work_type02">근무</li>';
+                    mkHtml += '<li class="work_type03">연장근로</li>';
+                    mkHtml += '</ul>';
+                    mkHtml += '<table id="restcalendarTable" class="list_restcalendar">';
+                    mkHtml += '<thead>' ;
+                }
+                mkHtml += '<tr>';
+                for(var j=colBeg; j<=colEnd; j++) {
+                    // strDay = ''+(j+1);
+                    strDay = ''+j;
+                    if(strDay<10) strDay = '0' + strDay;
+                    tagId = strYear + strMon + strDay;
+
+                    if(i==0) {          // table 상단 제목
+                        if(j==0)  mkHtml += '<th scope="col"></th>';
+                        else mkHtml += '<th scope="col">'+j+'</th>';
+                    }
+                    else {              // table 내용
+                        if(j==0)  mkHtml += '<th>'+i+'월</th>';
+                        else parseInt(strDay) > iDayMax ? mkHtml += '<td id='+tagId+' class='+tagClass+'></td>' : mkHtml += '<td id='+tagId+'></td>';
+                    }
+                }
+                mkHtml += '</tr>';
+                if(i==0) mkHtml += '</thead>'+'<tbody class="cal_week">';
+            }
+            mkHtml += '</tbody>';
+            mkHtml += '</table>';
+            $('#restcalendarTable').html(mkHtml);
+            return mkHtml;
+        },
+        getDaymax : function(years,months) {    /*  총 일수 계산 */
+            var i = 29, cday;
+            while(i<32){
+                cday = new Date(years,months,i);
+                if (cday.getFullYear()!=years || cday.getMonth()!=months) break;
+                i++;
+            }
+            return i-1;
+        },
+        getNumberspace : function(num) {        /* 날짜 format 변환 (ex: 1 -> 01) */
+            if (num<10) num = '0' + num;
+            return num;
+        },
+        initDate : function() {
+            this.mkCaption(this);
+        },
+        setSchedule : function(data) {          /* calendar에 날짜 data 등록 */
+            var owner=this;
+            var rs = data.ET_LIST;
+            for (var i = 0; i < rs.length; i++) {
+                var rsDate = moment(rs[i].datum,'YYYYMMDD');
+                var yymmdd = rsDate.format("YYYYMMDD");
+                var yymm = rsDate.format("YYYYMM");
+                var yy = rsDate.format("YYYY");
+                var $total = $('#'+yy+1332);    // 총계
+                var $sum = $('#'+yymm+32);      // 월별 합계
+                var $day = $('#'+yymmdd);       // 일별
+
+                // calendar 월별 개수 세팅
+                if(rs[i].dat == 32) {
+                  if(rs[i].mon == 13) $total.closest('th').text((Number(rs[i].cnt.trim()).toFixed(1)));
+                  else $sum.closest('th').text((Number(rs[i].cnt.trim()).toFixed(1)));
+                }
+
+                // calendar 배경색상 세팅
+                if(rs[i].dat == 0) continue;
+                switch (rs[i].bgcolor) {
+                  case '#E6EAFF' : //휴일
+                        $day.closest('td').addClass("cal_holiday");
+                        break;
+                  case '#FFA7A7' : //오늘
+                        $day.closest('td').addClass('cal_today');
+                        break;
+                  case '#white' :  //평일
+                        $day.closest('td').addClass('');
+                        break;
+                  default       :
+                        break;
+                }
+
+                // 평일 오늘 이전
+                if(yymmdd < cymd.format('YYYYMMDD')) {
+                    $day.closest('td').addClass('cal_passday');
+                }
+
+                // calendar 아이콘 세팅
+                switch (rs[i].status) {
+                  case 'A' :       // 휴무
+                        $day.closest('td').addClass("ico_work_type01");
+                        $day.css('cursor', 'pointer').click(function (e) {  // 근태현황 상세 조회 Popup open
+                            sendFormPopup(
+                                'detail.htm',
+                                'popupReg',
+                                {'IV_DATE': $(this).get(0).id, 'IV_PERNR': ''},
+                                 450, 450
+                            );
+                        });
+                        break;
+                  case 'P' :       // 근무
+                        $day.closest('td').addClass('ico_work_type02');
+                        $day.css('cursor', 'pointer').click(function (e) {  // 근태현황 상세 조회 Popup open
+                            sendFormPopup(
+                                'detail.htm',
+                                'popupReg',
+                                {'IV_DATE': $(this).get(0).id, 'IV_PERNR': ''},
+                                450, 450
+                            );
+                        });
+                        break;
+                  case 'T' :       // 연장근로
+                        $day.closest('td').addClass('ico_work_type03');
+                        $day.css('cursor', 'pointer').click(function (e) {  // 근태현황 상세 조회 Popup open
+                            sendFormPopup(
+                                'detail.htm',
+                                'popupReg',
+                                {'IV_DATE': $(this).get(0).id, 'IV_PERNR': ''},
+                                450, 450
+                            );
+                        });
+                        break;
+                  default       :
+                        break;
+                }
+            }
+
+            // 계획연월차 Header 데이터 호출
+            var rsInfo = data.ES_INFO;
+            $('#info_pyear').text((Number(rsInfo.pyear.trim()).toFixed(1)));   // 발생연차
+            $('#info_pyear1').text((Number(rsInfo.pyear1.trim()).toFixed(1))); // 발생연차(대여연차)
+            $('#info_pmon').text((Number(rsInfo.pmon.trim()).toFixed(1)));     // 발생월차
+
+            $('#info_uyear').text((Number(rsInfo.uyear.trim()).toFixed(1)));   // 사용연차
+            $('#info_umon').text((Number(rsInfo.umon.trim()).toFixed(1)));     // 사용월차
+
+            $('#info_ryear').text((Number(rsInfo.ryear.trim()).toFixed(1)));   // 잔여연차
+            $('#info_rmon').text((Number(rsInfo.rmon.trim()).toFixed(1)));     // 잔여월차
+
+            // 파견직(사원그룹 N)일 경우 발생일수 표시하지 않음
+            var persg = data.EV_PERSG;
+            if(persg == 'N') {
+                $('#pyear').empty();
+                $('#pmon').empty();
+            }
+        }
+    }
+    </script>
+</body>
+</html>
