@@ -1,0 +1,521 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html>
+<head>
+<title>다국어 관리</title>
+
+<%@include file="../z_msp_100/inc_menu.htm" %>
+
+<style type="text/css">
+    .k-grid-header th.k-header {
+        vertical-align: middle;
+    }
+</style>
+
+<script>
+    var dataSource, grid;
+    // var excel_file_name = "다국어 관리";
+
+    //DropDownList datasource
+    var typcdDropDownList = [], useYnDropDownList = [];
+
+    $(document).ready(function() {
+        getDropDownList('MSP025');
+        getDropDownList('MSP026');
+        setButton();
+        setForm();
+    });
+
+    function getDropDownList(grpid) {
+        var cfc = new CallFuncClass();
+        cfc.setFuncName("Z_MSP_IF100_04");
+        cfc.addParam('IV_GRPID', grpid, false);
+        cfc.addParam('IV_SPRAS', dsUserInfo.spras, false);
+        cfc.addParam('CT_LIST', '', false);
+
+        $.ajax({
+            url: URL.callFunction,
+            dataType: "jsonp",
+            jsonp : "callback",
+            data: cfc.getData(),
+            type: "POST",
+            success: function(data) {
+                if(grpid == 'MSP025') {     // 구분
+                    typcdDropDownList = JSON.parse(JSON.stringify(data.CT_LIST));
+                    var combobox_TYPCD = $("#typcd").data("kendoDropDownList");
+                    data.CT_LIST.unshift({dcdid:'', dcdnm:'All', grpid:''});
+                    combobox_TYPCD.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                    combobox_TYPCD.select(0);
+                }
+                if(grpid == 'MSP026') {     // 사용여부
+                    useYnDropDownList = JSON.parse(JSON.stringify(data.CT_LIST));
+                    var combobox_USEYN = $("#useyn").data("kendoDropDownList");
+                    data.CT_LIST.unshift({dcdid:'', dcdnm:'All', grpid:''});
+                    combobox_USEYN.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                    combobox_USEYN.select(0);
+                }
+
+                if(typcdDropDownList.length != 0 && useYnDropDownList.length != 0 ) initCreate('');
+            },
+            error: function () {
+                alert("error");
+            },
+            beforeSend: function() {
+                kendo.ui.progress($("#container"), true);
+            },
+            complete: function() {
+                kendo.ui.progress($("#container"), false);
+            }
+        });
+    }
+
+    function initCreate(type) {
+        var cfc = new CallFuncClass();
+        cfc.setFuncName("Z_MSP_IF116");
+        cfc.addParam('IV_FLAG', '', false); // '': 조회, 'S': 저장, 'D': 삭제
+        cfc.addParam('IV_TYPCD', $("#typcd").data("kendoDropDownList").value(), false);
+        cfc.addParam('IV_LBLNM', $("#lblnm").val(), false);
+        cfc.addParam('IV_USEYN', $("#useyn").data("kendoDropDownList").value(), false);
+        cfc.addParam('CT_LIST','',false);
+
+        $.ajax({
+            url: URL.callFunction,
+            dataType: "jsonp",
+            jsonp : "callback",
+            data: cfc.getData(),
+            type: "POST",
+            success: function(data) {
+                setCreate(data);
+            },
+            error: function () {
+                alert("error");
+            },
+            beforeSend: function() {
+                kendo.ui.progress($("#container"), true);
+            },
+            complete: function() {
+                kendo.ui.progress($("#container"), false);
+            }
+        });
+    }
+
+    function setCreate(data) {
+        if(data.EV_MSGTY == "S" || data.EV_MSGTY == "") {   // EV_MSGTY : I/F Result('S' 성공, 'F' 실패, 'C' 진행중)
+            setGrid(data);
+        } else {
+            alert('일치하는 데이터가 없습니다.');
+        }
+    }
+
+    function setForm() {
+        // 구분
+        $("#typcd").kendoDropDownList({
+            template: '<span>#= dcdnm #',
+            valueTemplate: '<span class="selected-value">#= dcdnm #</span>',
+            dataTextField: "dcdnm",
+            dataValueField: "dcdid",
+            index:0
+        });
+
+        // 사용여부
+        $("#useyn").kendoDropDownList({
+            template: '<span>#= dcdnm #',
+            valueTemplate: '<span class="selected-value">#= dcdnm #</span>',
+            dataTextField: "dcdnm",
+            dataValueField: "dcdid",
+            index:0,
+        });
+    }
+
+    function reqApprove(type, dataSource) {
+        var cfc = new CallFuncClass();
+        cfc.setFuncName("Z_MSP_IF116");
+        cfc.addParam('IV_FLAG', type, false); // '': 조회, 'S': 저장, 'D': 삭제
+        // cfc.addParam('CT_LIST', dataSource, true);
+
+        if(type == "S") {
+            cfc.addDsParam("CT_LIST",dataSource);
+        } else {
+            cfc.addParam("CT_LIST",dataSource,true);
+        }
+
+
+        $.ajax({
+            url : URL.callFunction,
+            dataType : "jsonp",
+            jsonp : "callback",
+            data : cfc.getData(),
+            type : "POST",
+            success : function(data) {
+                if (data.EV_MSGTY == 'S' || data.EV_MSGTY == '') {   // EV_MSGTY : I/F Result('S' 성공, 'F' 실패, 'C' 진행중)
+            setGrid(data);
+        } else {
+            alert('일치하는 데이터가 없습니다.');
+        }
+    }
+
+    function setForm() {
+        // 구분
+        $("#typcd").kendoDropDownList({
+            template: '<span>#= dcdnm #',
+            valueTemplate: '<span class="selected-value">#= dcdnm #</span>',
+            dataTextField: "dcdnm",
+            dataValueField: "dcdid",
+            index:0
+        });
+
+        // 사용여부
+        $("#useyn").kendoDropDownList({
+            template: '<span>#= dcdnm #',
+            valueTemplate: '<span class="selected-value">#= dcdnm #</span>',
+            dataTextField: "dcdnm",
+            dataValueField: "dcdid",
+            index:0,
+        });
+    }
+
+    function reqApprove(type, dataSource) {
+        var cfc = new CallFuncClass();
+        cfc.setFuncName("Z_MSP_IF116");
+        cfc.addParam('IV_FLAG', type, false); // '': 조회, 'S': 저장, 'D': 삭제
+        // cfc.addParam('CT_LIST', dataSource, true);
+
+        if(type == "S") {
+            cfc.addDsParam("CT_LIST",dataSource);
+        } else {
+            cfc.addParam("CT_LIST",dataSource,true);
+        }
+
+
+        $.ajax({
+            url : URL.callFunction,
+            dataType : "jsonp",
+            jsonp : "callback",
+            data : cfc.getData(),
+            type : "POST",
+            success : function(data) {
+                if (data.EV_MSGTY == 'S' || data.EV_MSGTY == '') {   // EV_MSGTY : I/F Result('S' 성공, 'F' 실패, 'C' 진행중)
+                    if(type == 'S') alert('저장되었습니다.');
+                    if(type == 'D') alert('삭제되었습니다.');
+                    initCreate('');
+                } else {
+                    alert("error");
+                }
+            },
+            error : function() {
+                alert("error");
+            },
+            beforeSend : function() {
+                kendo.ui.progress($("#container"), true);
+            },
+            complete : function() {
+                kendo.ui.progress($("#container"), false);
+            }
+        });
+    }
+
+    function setButton() {
+        // 조회
+        $("#btnSearch").click(function() {
+            initCreate('');
+        });
+
+        // 추가
+        $("#btnAdd").click(function() {
+            dataSource.insert(0,
+            {
+                "typcd"  :typcdDropDownList[0].dcdid,
+                "lblcd"  :"",
+                "lblnm_k":"",
+                "lblnm_e":"",
+                "lblnm_z":"",
+                "useyn"  :useYnDropDownList[0].dcdid
+            });
+        });
+
+        // 저장
+        $("#btnSave").click(function() {
+            //validation check - label 한글명이 없을 경우 return
+            var dataItem = grid.dataSource._data;
+            for(var i=0; i<dataItem.length; i++) {
+                if(dataItem[i].lblnm_k == '') {
+                    alert('Label 상세명을 입력해주세요.');
+                    return;
+                }
+            }
+            reqApprove("S", grid.dataSource);
+        });
+
+        // 삭제
+        $("#btnDel").click(function() {
+            var selectRows = grid.table.find("input.checkbox:checked");
+            var selectedData = [];
+            if (selectRows.length > 0) {
+                for (var i = 0; i < selectRows.length; i++) {
+                    selectedData.push(grid.dataItem($(selectRows[i]).closest("tr")));
+                    // var dataItem = grid.dataItem($(selectRows[i]).closest("tr"));
+                    // dataItem.set('zedit', 'X');
+                    // selectedData.push(dataItem);
+                }
+                reqApprove("D", selectedData);
+            } else {
+                alert("삭제할 데이터를 선택해주세요.");
+                return;
+            }
+        });
+
+        // 엑셀
+        // $("#excelBtn").click(function(e) {
+        //     if (grid.dataSource.total() > 0) {
+        //         //$("#grid").getKendoGrid().saveAsExcel();
+        //         var xlsTpl = kendo.template($('#xlsTpl').html());
+        //         $("#list").html(xlsTpl({rows:grid.dataSource.data()}));
+
+        //         var tab_text="";
+        //         var tHtml = "";
+        //         var textRange; var j=0;
+        //         var eDiv = $("#list");
+
+        //         eDiv.find("table").attr("border" , 1);
+        //         tHtml = eDiv.html();
+        //         eDiv.find("table").removeAttr("border");
+
+        //         tab_text = tHtml;
+        //         tab_text = tab_text.replace(/<a[^>]*>|<\/a>/g, "");//remove if u want links in your table
+        //         tab_text = tab_text.replace(/<img[^>]*>/gi,""); // remove if u want images in your table
+        //         tab_text = tab_text.replace(/<input[^>]*>|<\/input>/gi, ""); // reomves input params
+
+        //         var ua = window.navigator.userAgent;
+        //         var msie = ua.indexOf("MSIE ");
+
+        //         if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./))      // If Internet Explorer
+        //         {
+        //             txtArea1.document.open("txt/html","replace");
+        //             txtArea1.document.write(tab_text);
+        //             txtArea1.document.close();
+        //             txtArea1.focus();
+        //             sa = txtArea1.document.execCommand("SaveAs", true, excel_file_name + ".xls");
+        //             return (sa);
+        //         }
+        //         else {                //other browser not tested on IE 11
+        //             var a = document.createElement('a');
+        //             a.href = 'data:application/vnd.ms-excel,' + encodeURIComponent(tab_text);
+        //             a.download = excel_file_name + ".xls";
+        //             a.click();
+        //             e.preventDefault();
+        //             //sa = window.open('data:application/vnd.ms-excel,' + encodeURIComponent(tab_text));
+        //         }
+        //     } else {
+        //         alert("다국어 관리 내역이 없습니다.");
+        //     }
+
+        // });
+    }
+
+    function setGrid(data) {
+        dataSource = new kendo.data.DataSource({
+            type: "json",
+            data: data,
+            schema: {
+                data: "CT_LIST",
+                total: "CT_LIST.length",
+                model: {
+                    fields: {
+                        mgtyn  : { editable: false },
+                        typcd  : { type: "string" },
+                        lblcd  : { editable: false },
+                        lblnm_k: { type: "string" },
+                        lblnm_e: { type: "string" },
+                        lblnm_z: { type: "string" },
+                        useyn  : { type: "string" }
+                    }
+                }
+            }
+        });
+
+        grid = $("#grid").kendoGrid({
+            dataSource: dataSource,
+            autoBind: true,
+            height:710,
+            scrollable:true,
+            sortable: true,
+            resizable: true,
+            pageable: false,
+            navigatable: true,
+            filterable:false,
+            selectable: true,
+            editable: true,
+            change: function(e) {
+                var dataItem = grid.dataItem(grid.select());
+                dataItem.set('zedit', 'X');
+            },
+            edit: function(e) {
+                e.container.find("input[name=lblnm_k]").attr("maxlength", 200);
+                e.container.find("input[name=lblnm_e]").attr("maxlength", 200);
+                e.container.find("input[name=lblnm_z]").attr("maxlength", 200);
+            },
+            columns: [
+                { field: "mgtyn", title: "<input type='checkbox' id='selectAll'>", width:30, template:"<input type='checkbox' class='checkbox'/>", sortable:false},
+                { field: "typcd", title: "구분", width:50, editor: setTypcdEditor, attributes:{class: "edit"}, template:"<span class='fakebox text_select'>#= getTypcdDropDownList(typcd) #</span>    "},
+                { field: "lblcd", title: "코드", width:50, attributes: {class: "table-cell", style: "text-align: center;"}},
+                { field: "lblnm_k", title: "국문명", width:100, attributes: {class: "table-cell", style: "text-align: left;"}},
+                { field: "lblnm_e", title: "영문명", width:100, attributes: {class: "table-cell", style: "text-align: left;"}},
+                { field: "lblnm_z", title: "중문명", width:100, attributes: {class: "table-cell", style: "text-align: left;"}},
+                { field: "useyn", title: "사용여부", width:50, editor: setUseYnEditor, attributes:{class: "edit"}, template:"<span class='fakebox text_select'>#= getUseYnDropDownList(useyn) #</span>"},
+            ],
+            dataBound:function(e) {
+                var msg = "내역이 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns.length;
+                    $(e.sender.wrapper)
+                    .find('tbody')
+                    .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                } else {
+                    // 그리드 멀티 선택
+                    grid.tbody.find(".checkbox").bind("change", function (e) {
+                        grid.tbody.find("tr").each(function() {
+                            if ($(this).find("input.checkbox").is(":checked")) {
+                                // $(this).find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                            } else {
+                                // $(this).find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                            }
+                        });
+                    }).bind("click", function(e) {
+                        e.stopPropagation();
+                    });
+                }
+                grid.thead.find("#selectAll").prop("checked", false);
+                grid.thead.find("#selectAll").unbind("click");
+                grid.thead.find("#selectAll").bind("click", function() {
+                    if ($(this).is(":checked")) {
+                        grid.tbody.find(".checkbox").prop("checked", true);                       
+                        // grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                    } else {
+                        grid.tbody.find(".checkbox").prop("checked", false);
+                        // grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                    }
+                    // grid.tbody.find('tr.k-state-selected').find('td').css({'background-color':'#a8d7ff', 'color':'#000'});
+                });
+            }
+        }).data("kendoGrid")
+    }
+
+    function setTypcdEditor(container, options){
+        var dataItem = grid.dataItem(container.closest("tr"));
+        if (container.hasClass('edit')) {
+            var DropList= $('<input name="' + options.field + '"/>')
+                .appendTo(container)
+                .kendoDropDownList({
+                    dataTextField: "dcdnm",
+                    dataValueField: "dcdid",
+                    dataSource: typcdDropDownList,
+                    change: function(e) {
+                        var dataItem = grid.dataItem(grid.select());
+                        dataItem.set(options.field, this.value());
+                    }
+                }).data("kendoDropDownList");
+            DropList.open();
+        } else {
+            container.text(options.model[options.field]);
+        }
+    }
+
+    function setUseYnEditor(container, options){
+        var dataItem = grid.dataItem(container.closest("tr"));
+        if (container.hasClass('edit')) {
+            var DropList= $('<input name="' + options.field + '"/>')
+                .appendTo(container)
+                .kendoDropDownList({
+                    dataTextField: "dcdnm",
+                    dataValueField: "dcdid",
+                    dataSource: useYnDropDownList,
+                    change: function(e) {
+                        var dataItem = grid.dataItem(grid.select());
+                        dataItem.set(options.field, this.value());
+                    }
+                }).data("kendoDropDownList");
+            DropList.open();
+        } else {
+            container.text(options.model[options.field]);
+        }
+    }
+
+    function getTypcdDropDownList(data) {
+        for (var i = 0; i < typcdDropDownList.length; i++) {
+            if (typcdDropDownList[i].dcdid == data) {
+                return typcdDropDownList[i].dcdnm;
+            }
+        }
+    }
+
+    function getUseYnDropDownList(data) {
+        for (var i = 0; i < useYnDropDownList.length; i++) {
+            if (useYnDropDownList[i].dcdid == data) {
+                return useYnDropDownList[i].dcdnm;
+            }
+        }
+    }
+</script>
+</head>
+
+<div id="list" style="display: none"></div>
+<iframe id="txtArea1" style="display: none"></iframe>
+<body>
+    <!-- container -->
+    <div id="container">
+    <h2 class="h2-tit">다국어 관리</h2>
+        <div class="hd-sch">
+            <span class="tit-tx">구분</span>
+            <input type="hidden" id="typcd" class="header_sch" style="width:150px"/>
+            <span class="tit-tx">사용여부</span>
+            <input type="hidden" id="useyn" class="header_sch" style="width:150px"/>
+            <span class="tit-tx">명칭</span>
+            <input type="text" id="lblnm" class="input" style="width:40%; ime-mode: active;">
+            <div class="right">
+                <a id="btnSearch" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                <a href="#" id="btnAdd" class="btn btn-blue"><i class="fa fa-plus"></i> 추가</a>
+                <a href="#" id="btnDel" class="btn btn-blue"><i class="fa fa-minus"></i> 삭제</a>
+                <a href="#" id="btnSave" class="btn btn-red"><i class="fa fa-floppy-o"></i> 저장</a>
+                <!-- <a href="#" id="excelBtn" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a> -->
+            </div>
+        </div>
+        <div class="row-bx">
+            <div>
+            <div id="grid"></div>
+            </div>
+        </div>
+    </div>
+    <!-- //container -->
+</body>
+</html>
+<script type="text/x-kendo-template" id="xlsTpl">
+    <table class="list_sub">
+    <thead>
+        <tr>
+        <th>메뉴코드</th>
+        <th>메뉴명</th>
+        <th>메뉴영문명</th>
+        <th>메뉴중문명</th>
+        <th>프로그램ID</th>
+        <th>부모코드</th>
+        <th>정렬순서</th>
+        <th>사용여부</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+        <td align="left">#= rows[i].mnuid #</td>
+        <td align="left">#= rows[i].mnuko #</td>
+        <td align="left">#= rows[i].mnuen #</td>
+        <td align="left">#= rows[i].mnuzh #</td>
+        <td align="left">#= rows[i].urlcd #</td>
+        <td align="left">#= rows[i].pmnue #</td>
+        <td align="left">#= rows[i].srtrd #</td>
+        <td style="text-align: center">#= getUseYnDropDownList(rows[i].useyn) #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
