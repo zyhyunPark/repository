@@ -1,0 +1,59 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<title>근무관리시스템 M Plan</title>
+<%@include file="../z_ess_021/inc_header.htm" %>
+<script>
+ 	var grid, dataSource;
+  var list_box = '<%=LIST_BOX%>';
+  list_box = typeof list_box == 'object' ? list_box : $.parseJSON(list_box);
+
+  var conf = {
+            FILE_LIST: [{id: 1, name: '계획첨부'}, {id: 2, name: '실적첨부'}]
+  };
+
+    function setGrid(ds) {
+        grid = $("#grid").kendoGrid({
+            dataSource: ds,
+            autoBind: true,
+            //height: 400,
+            sortable: false,
+            resizable: true,
+            pageable: false,
+            navigatable: true,
+            selectable: true,
+            columns: [
+                { field: "wkftx", title: "승인", width: 70},
+                { field: "worktytx", title: "근태", width: 70},
+                { field: "pernrt", title: "사번", width: 70},
+                { field: "zjikgp", title: "직급", width: 80},
+                { field: "ename", title: "성명", width: 80},
+                { field: "begt", title: "시작", width: 70, template: "#=kendo.toString(kendo.parseDate(begt, 'HHmmss'), 'HH:mm')#"},
+                { field: "endt", title: "종료", width: 70, template: "#=kendo.toString(kendo.parseDate(endt, 'HHmmss'), 'HH:mm')#"},
+                { field: "tottx", title: "총시간", width: 90},
+                { field: "reasontx", title: "사유", width: 90},
+                { field: "zwork", title: "작업내용", width: 100},
+                { field: "zgoal", title: "작업목표", width: 100},
+                { field: "zremark", title: "비고", width: 100},
+                { field: "adesc", title: "의견", width: 100}
+            ]
+        }).data("kendoGrid");
+
+        $("#grid").kendoTooltip({
+            filter: "td:nth-child(10),td:nth-child(11),td:nth-child(12),td:nth-child(13)",
+            content: function(e){
+                var text = $(e.target).text();
+                return '<div style="width: ' + text.length * .6 + 'em; max-width: 14em">' + text + '</div>';
+            }
+        }).data("kendoTooltip");
+
+        dataSource = grid.dataSource;
+    }
+
+</script>
+</head>
+<body>
+<%@include file="../z_hass_513/common_layout2.htm" %>
+</body>
+</html>
