@@ -1,0 +1,408 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근태포털</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var gData = null;
+        var offSource, offGrid, workGrid, planGrid, workSource, planSource;
+        var workitemId = '<%=WORKITEM_ID%>';
+        var prevId = '<%=PREV_ID%>';
+        var bReject = false;
+        var clicked = false;
+        var display = true;
+        var ivDisyn;
+
+        $(document).ready(function() {
+            initDisplay();
+        });
+
+        function initDisplay() {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getDisplayData(),
+                type: "POST",
+                success: setDisplay,
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function setButton() {          /* 버튼 세팅 */
+            // 신청이력조회
+            $("#historyBtn").click(getHistory).show();
+            // 닫기
+            $("#closeBtn").click(function() { top.window.close(); });
+        }
+
+        function getDisplayData() {                     /* 데이터 조회 function 호출 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_WF_DISPLAY");
+            cfc.addParam('IV_WORKITEM', workitemId, false);
+            cfc.addParam('IV_FLAG', (display ? '' : 'X'), false);
+
+            return cfc.getData();
+        }
+
+        function setDisplay(data, status, jqXHR) {      /* 데이터 조회 function 호출 결과 세팅 */
+            if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                setButton();
+                setForm(data);
+                setData(data);
+                gET_LINE1 = data.ET_LINE1;
+                gET_LINE2 = data.ET_LINE2;
+                setApprovalLine("lineGrid1", data.ET_LINE1);
+                setApprovalLine("lineGrid2", data.ET_LINE2);
+            } else {
+                alert(data.ES_RESULT.message);
+            }
+        }
+
+        function setForm(data) {            /* 폼 세팅 */
+            $("#reqdt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            $("#begda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            $("#endda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            // dropdown 세팅
+            $("#absty").kendoDropDownList({
+                dataSource: [{value: data.ES_INFO.abstyt, key: data.ES_INFO.absty}],
+                dataTextField: "value",
+                dataValueField: "key"
+            });
+            $("#awart").kendoDropDownList({
+                dataSource: [{value: data.ES_INFO.awartt, key: data.ES_INFO.awart}],
+                dataTextField: "value",
+                dataValueField: "key"
+            });
+
+            // 휴무구분 '1'(연월차)일 경우 신청이력조회 비활성화
+            checkAbsty(data);
+
+            $("ET_SUBTY1, #ET_SUBTY2, #ET_ATTTY, #ET_ABSTY").kendoDropDownList({
+                    dataTextField: "value",
+                    dataValueField: "key",
+                    index: 0
+            });
+        }
+
+        function setData(data){         /* 데이터 세팅 */
+            gData = data;
+            data.CS_INFO = data.ES_INFO;
+            setEmpInfo(data.ES_EMP);
+
+            // 재상신 표시여부
+            if (!display && data.ES_REASON.hisid != '' && data.ES_REASON.rdesc != '') {
+                $("#es_reqdt").val(kendo.toString(kendo.parseDate(data.ES_REASON.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                $("#es_rdesc").val(data.ES_REASON.rdesc);
+                $(".reRequest").show();
+            }
+            // appid
+            $("#appid").val(data.CS_INFO.appid);
+            // 신청일
+            $("#reqdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // 휴무기간
+            $("#begda").val(kendo.toString(kendo.parseDate(data.CS_INFO.begda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $("#endda").val(kendo.toString(kendo.parseDate(data.CS_INFO.endda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // 총가능일수
+            $("#ztotal").val(data.CS_INFO.ztotal.trim());
+            // 휴무일수
+            $("#zholi").val(data.CS_INFO.zholi.trim());
+            // 잔여일수
+            $("#zrest").val(data.CS_INFO.zrest.trim());
+            // 반려사유
+            if (display && data.ES_INFO.rdesc != '') {
+                $("#rdesc").val(data.ES_INFO.rdesc).attr("readonly", "readonly");
+                $(".rejectReason").show();
+            }
+            // 신청부서
+            setApprovalLine("ET_LINE1", data.ET_LINE1);
+            // 담당부서
+            setApprovalLine("ET_LINE2", data.ET_LINE2);
+        }
+
+        function setEmpInfo(emp) {              /* 신청자정보 세팅 */
+            // 신청자 사번
+            $("#pernrt").val(emp.pernrt);
+            // 신청자 성명
+            $("#ename").val(emp.ename);
+            // 신청자 소속
+            $("#orgtx").val(emp.orgtx);
+            // 신청자 직위
+            $("#jikwi").val(emp.jikwi);
+            // 신청자 직책
+            $("#jikch").val(emp.jikch);
+            // 신청자 그룹 입사일
+            $("#dat02").val(kendo.toString(kendo.parseDate(emp.dat02, 'yyyyMMdd'),'yyyy.MM.dd'));
+        }
+
+        function getHistory() {             /* 휴가신청 상세 이력 조회 */
+            sendFormPopup(
+                '../Z_ESS_524/popup_history.htm',
+                'popupReg',
+                {'IV_PERNR': gData.ES_INFO.pernr, 'IV_AWART': $("#awart").val()},
+                450, 550
+            );
+        }
+
+        function checkAbsty(data) {         /* 휴무유형 기준 신청이력버튼 활성화 여부 */
+            var param;
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_CHECK_ABSTY");
+            cfc.addParam('IV_AWART', data.ES_INFO.awart, false);
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: param,
+                type: "POST",
+                success: function(data) {
+                    ivDisyn = data.EV_DISYN;
+                    if(ivDisyn == "N" || ivDisyn == "C" ) {
+                        $("#historyBtn").hide();
+                        $(".disyn_y").show();
+                        $('.disyn_n').attr('colspan', 'default');
+                        // 반차 오전/오후(ES_INFO.ZAMPM) 선택 된 경우 radio button 활성화
+                        if(gData.CS_INFO.awart == 'G020' && gData.CS_INFO.zampm == 'A') {           // 오전
+                            $(".zampm").show();
+                            $('#zampmRadio_a').attr('checked', true);
+                            $("#zampmRadio_a").css("cursor", "default");
+                            $("#zampmRadio_p").css("cursor", "default");
+                        } else if(gData.CS_INFO.awart == 'G020' && gData.CS_INFO.zampm == 'P') {    // 오후
+                            $(".zampm").show();
+                            $('#zampmRadio_p').attr('checked', true);
+                            $("#zampmRadio_a").css("cursor", "default");
+                            $("#zampmRadio_p").css("cursor", "default");
+                        } else {
+                            $(".zampm").hide();
+                        }
+                    } else {
+                        $("#historyBtn").show();
+                        $(".zampm").hide()
+                        $(".disyn_y").hide();
+                        $('.disyn_n').attr('colspan', 5);
+                    }
+                    if (ivDisyn == 'C'){
+                        $("#total_t").text('총가능시간');
+                        $("#holi_t").text('사용시간');
+                        $("#rest_t").text('잔여시간');
+                    } else {
+                        $("#total_t").text('총가능일수');
+                        $("#holi_t").text('사용일수');
+                        $("#rest_t").text('잔여일수');
+                    }
+                },
+                error: function () {
+                    alert("server error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+    </script>
+<!--[if lt IE 9]>
+<script type="text/javascript" src="js/html5shiv.js"></script>
+<![endif]-->
+</head>
+<body>
+
+<section id="popup_wrap2">
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+           <h1>휴가신청 신청내역</h1>
+           <a href="javascript:top.window.close()" class="btn_close" title="닫기">Close</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+        <!-- title -->
+        <h5>휴가 신청</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic" id="closeBtn">닫기</button>
+        </div>
+        <!-- //button -->
+
+
+        <!-- form -->
+        <form id="approvalForm" onsubmit="return false;">
+        <div class="form_box">
+            <input type="hidden" id="pernr" name="pernr" />
+            <input type="hidden" id="appid" />
+            <table class="form_basic">
+                <colgroup>
+                    <col width="10%"/>
+                    <col width="36%"/>
+                    <col width="10%"/>
+                    <col width="8%"/>
+                    <col width="10%"/>
+                    <col width="8%"/>
+                    <col width="10%"/>
+                    <col width="8%"/>
+                </colgroup>
+                <tr>
+                    <th>신청일 <span class="astro">*</span></th>
+                    <td colspan="7">
+                        <input id="reqdt" name="reqdt" type="text" disabled="ture" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">휴무기간 <span class="astro">*</span></th>
+                    <td colspan="7">
+                        <input id="begda" name="begda" type="text" class="datepicker" maxlength="10" disabled="ture" />
+                        ~
+                        <input id="endda" name="endda" type="text" class="datepicker" maxlength="10" disabled="ture" />
+                    </td>
+
+                </tr>
+                <tr>
+                    <th>휴무유형 <span class="astro">*</span></th>
+                    <td>
+                        <select id="absty" disabled="true" style="width: 95px;"></select>
+                        <select id="awart" disabled="true"></select>
+                        <li class="zampm" style="display:none; display:inline-block;">
+                            <input type='radio' id='zampmRadio_a' value="A" disabled="true" />오전
+                            <input type='radio' id='zampmRadio_p' value="P" disabled="true" />오후
+                        </li>
+                        <button type="button" id="historyBtn" class="btn_basic_g" style="display:none; width: 100px; padding: 0;">신청이력조회</button>
+                    </td>
+                    <th scope="row" id="total_t" class="disyn_y" style="display: none;">총가능일수</th>
+                    <td class="disyn_y" style="display: none;">
+                        <input id="ztotal" type="text" class="w_datenum" disabled="ture" />
+                    </td>
+                    <th scope="row" id="holi_t">휴무일수</th>
+                    <td class="disyn_n">
+                        <input id="zholi" type="text" class="w_datenum" disabled="ture" />
+                    </td>
+                    <th scope="row" id="rest_t" class="disyn_y" style="display: none;">잔여일수</th>
+                    <td class="disyn_y" style="display: none;">
+                        <input id="zrest" type="text" class="w_datenum" disabled="ture" />
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5>신청자 정보</h5>
+        <!-- //title -->
+
+        <div class="form_box">
+            <table class="form_basic">
+                <colgroup>
+                    <col width="130">
+                    <col width="*">
+                    <col width="130">
+                    <col width="*">
+                    <col width="130">
+                    <col width="*">
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <th scope="row">사번</th>
+                        <td><input id="pernrt" name="pernrt" type="text" disabled="ture"/></td>
+                        <th scope="row">성명</th>
+                        <td><input id="ename" name="ename" type="text" disabled="ture" style="width: 100%" /></td>
+                        <th scope="row">소속</th>
+                        <td><input id="orgtx" name="orgtx" type="text" disabled="ture"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">직위</th>
+                        <td><input id="jikwi" name="jikwi" type="text" disabled="ture"/></td>
+                        <th scope="row">직책</th>
+                        <td><input id="jikch" name="jikch" type="text" disabled="ture"/></td>
+                        <th scope="row">그룹입사일</th>
+                        <td><input id="dat02" name="dat02" type="text" disabled="ture"/></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- //form -->
+
+        <!-- title -->
+        <h5 class="reRequest" style="display: none">재상신 정보</h5>
+        <!-- //title -->
+        <div class="form_box reRequest" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td>재상신 문건 <input id="es_reqdt" type="text" class="k-textbox" readonly="readonly" style="width:120px" /> 일자 반려건에 대한 재상신
+                </td>
+                </tr>
+                <tr>
+                    <td>반려사유 <input id="es_rdesc" type="text" class="k-textbox" readonly="readonly" style="width: 50%" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5 class="rejectReason" style="display: none">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" class="all"  id="rdesc" style="width: 100%" maxlength="255" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5>결재라인</h5>
+        <!-- //title -->
+
+        <!-- approve -->
+        <div class="approve_box">
+            <div class="tb_box">
+                <!-- title -->
+                <h6>신청부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE1" class="mb_15"></div>
+            </div>
+
+            <div class="tb_box">
+                <!-- title -->
+                <h6>담당부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE2" class="mb_15"></div>
+            </div>
+        </div>
+        <!-- //approve -->
+        </form>
+        <!-- //form -->
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
