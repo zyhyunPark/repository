@@ -1,0 +1,1081 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>제품별 상세조회(BOM)</title>
+    <%@include file="../z_msp_100/inc_menu.htm" %>
+    <style type="text/css">
+        /* 2019.01.10 even row background color 제거 */
+        .k-grid tr:nth-child(even){
+            background-color:#FFFFFF;
+        }
+        .k-grid-header th.k-header {
+            vertical-align: middle;
+        }
+        /* 2018.10.31 탭 background color 변경 */
+        .div-tab>ul>li>a {
+            background: #D5D5D5;
+            font-weight: bold;
+            color: #FFFFFF;
+        }
+        .div-tab>ul>li>a:hover, .div-tab>ul>li.active>a {
+            color: #333333;
+        }
+        #grid2 .k-grid td{
+            padding: .2em .4em;
+        }
+        #grid2 .k-grid-header th.k-header{
+            padding: .4em .5em .3em .5em;
+            font-size: 11px;
+        }
+        #grid2{
+            font-size: 11px;
+        }
+        .div-tab ul li a{
+            font-size: 11px;
+            display:block;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .fa-close{
+            display: none;
+            float: right;
+            margin-right: 5px;
+            margin-top: -25px;
+            cursor: pointer;
+        }
+    </style>
+    <script>
+        var dataSource,dataSource2, grid1, grid2, colMF, colSF, flag, csInfo;
+        var sDt,eDt, gridId, matnr, cartp, div03, csInfo;
+        var cartpDR, gdgcdDR;
+        var cartpText, div03Text;
+        var addGridCnt = 1;
+        var gridFlag = true;
+        var tlayout = true; //grid layout resize
+        var excel_file_name = '제품별 상세조회(BOM)';
+        var div03, issym, cartp, sop3m, oyymm;
+        $(document).ready(function() {
+            setEvent();
+            setForm();
+            setSearchBox();
+            initCreate('');
+
+            if(typeof cartp != 'undefined' && cartp != '' && (typeof gdgcd != 'undefined' && gdgcd != '')){
+                getSOP3M();
+                $("#searchBtn").trigger("click");
+            }
+            $(".div-tab").scrollLeft();
+
+        });
+
+        function getSOP3M(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_05');
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            var data = callLoadData(cfc);
+            $("#sDt").val(kendo.toString(kendo.parseDate(data.EV_SOP3M,'yyyyMM'), 'yyyy.MM'));
+        }
+// =============================================================================================================================================
+        function initCreate(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData(type),
+                type: "POST",
+                success: function(data) {
+                    setCreate(data,type);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getCreateData(type) {
+            sDt = $("#sDt").val().replace(/\./g, '');
+            eDt = $("#eDt").val().replace(/\./g, '');
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF205_41");
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_SPMON_BF', sDt, false);
+            cfc.addParam('IV_SPMON_AF', eDt, false);
+            cfc.addParam('CT_LIST', '', false);
+            return cfc.getData();
+        }
+
+        function setCreate(data,type) {
+            if(type != ''){
+                $("#grid1").empty();
+            }
+            setGrid1(data);
+            $("#defaultView").hide();
+            for(var i = 0; i < 5; i++){
+                $("#grid1").rowspan(i);
+            }
+        }
+// =============================================================================================================================================
+// =============================================================================================================================================
+        function addGrid(matnr){
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getAddgridData(matnr),
+                type: "POST",
+                async:false,
+                success: function(data) {
+                    if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        csInfo = data.CT_LIST;
+                        setGrid2(data);
+                        gridFlag = true;
+                    }else{
+                        gridFlag = false;
+                        alert('일치하는 데이터가 없습니다.');
+
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getAddgridData(data) {
+            sDt = $("#sDt").val().replace(/\./g, '');
+            eDt = $("#eDt").val().replace(/\./g, '');
+            cartp = $("#cartp").data("kendoDropDownList").value();
+            div03 = $("#div03").data("kendoDropDownList").value();
+            var sYY = sDt.substr(0,4);
+            var sMM = sDt.substr(4,2);
+            var eYY = eDt.substr(0,4);
+            var eMM = eDt.substr(4,2);
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF205_42");
+            cfc.addParam('IV_MATNR', data, false);
+            cfc.addParam('IV_CARTP', cartp, false);
+            cfc.addParam('IV_DIV03', div03, false);
+            cfc.addParam('IV_SPMON_BF', sDt, false);
+            cfc.addParam('IV_SPMON_AF', eDt, false);
+
+            // 2018.11.16 TSKNO 추가
+            var dataItem = grid1.dataItem(grid1.select());
+            cfc.addParam('IV_TSKNO', dataItem.tskno, false);
+            cfc.addParam('IV_SEQNO', dataItem.seqno, false);
+
+            cfc.addParam('CT_LIST', '', false);
+            return cfc.getData();
+        }
+// =============================================================================================================================================
+        function setGrid1(data) {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                data: data,
+                schema: {
+                    data: "CT_LIST",
+                    total: "CT_LIST.length",
+                    model: {
+                        fields: {
+
+                        }
+                    }
+                }
+            });
+
+            grid1 = $("#grid1").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height:510,
+                selectable:true,
+                scrollable:true,
+                resizable: true,
+                pageable: true,
+                navigatable: true,
+                filterable:false,
+                editable:false,
+                columns: [
+                    { field: "maktx", title:"품명", width: 100, attributes:{style:"text-align:left; white-space: normal;"}, template: "#=total(matnr, maktx) #"},
+                    { field: "matnr", title: "품번", width: 100,attributes:{style:"text-align:left"}, template: function(rowItem){
+                        var result = "<a class='matnr' href='\\\\#' onclick='return false' ><span style='color:blue; text-decoration:underline'>"+rowItem.matnr+"</span></a>";
+                        if(rowItem.matnr.indexOf("Total") != -1) {
+                             result = '<span class=empty></span>';
+                        }
+                        return result
+                    } },
+                    { field: "usgrt", title: "USG", width: 52, attributes:{class:"nr-right"}, template: function(rowItem){
+                        var result = repStr(rowItem.usgrt);
+                        if(rowItem.matnr.indexOf("Total") != -1) {
+                              result = '<span class=empty></span>';
+                        }
+                        return result
+                    }  },
+                    { field: "optrt", title: "OPT", width: 68, attributes:{class:"nr-right"}, template: function(rowItem){
+                        var result = repStr(rowItem.optrt);
+                        if(rowItem.matnr.indexOf("Total") != -1) {
+                              result = '<span class=empty></span>';
+                        }
+                        return result == '' ? '' : result +'%'
+                    } },
+                    { field: "dcdnm_sm", title: "구분", width: 60 },
+                    { field: "", title: "금액", columns:[
+                        { field: "bfamt", title: "비교단계", width: 90, attributes:{class:"nr-right"}, template:"#= repStr(bfamt) #" },
+                        { field: "afamt", title: "현재단계", width: 90, attributes:{class:"nr-right"}, template:"#= repStr(afamt) #" }
+                    ]},
+                    { field: "acrsm", title: "차이", width: 80, attributes:{class:"nr-right"}, template:"#= repStr(acrsm) #" },
+                    { title: "변동사유별 금액", columns:[
+                        { field: "acr01", title: "사양", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr01) #" },
+                        { field: "acr02", title: "구매가", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr02) #" },
+                        { field: "acr03", title: "원자재", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr03) #" },
+                        { field: "acr04", title: "약정", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr04) #" },
+                        { field: "acr05", title: "원가절감", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr05) #" },
+                        { field: "acr06", title: "환율", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr06) #" },
+                        { field: "acr07", title: "CKD", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr07) #" },
+                        { field: "acr99", title: "기타", width: 70, attributes:{class:"nr-right"}, template:"#= repStr(acr99) #" }
+                    ]}
+                ],
+
+                dataBound:function(e){
+                    for(var i = 0; i < 3; i++){
+                        $("#grid1").rowspan(i);
+                    }
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+
+                    // header
+                    grid.thead.find("tr:eq(0)").find("th:eq(7)").css("border-left","0px");
+                    // grid.thead.find("tr:eq(1)").find("th:eq(1)").css("border-right", "1px solid #dddddd");
+                    grid.thead.find("tr:eq(0)").find("th:eq(9)").css("border-right","0px");
+
+                    $('.k-grid-header').css('padding-right', '0px');
+
+                    if (grid.dataSource.total() == 0) {
+                        var colCount = grid.columns.length+8;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                    }
+
+                    // tobody total
+                    $('.total').parents('td').attr("colspan", "4");
+                    $('.empty').parents('td').remove();
+                    $('.total').parents('td').css("background-color", "#fafafa");
+
+                    var rows = e.sender.tbody.children();
+                    if(rows.length > 1) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var row = $(rows[j]);
+
+                            var dataItem = e.sender.dataItem(row);
+                            var type = dataItem.get("matnr");
+
+                            if(type.indexOf("Total") != -1) {
+                                $(".k-grid-content").find("tr:eq("+j+")").css("background-color","#fafafa");  //7 column number
+                            }
+                        }
+                    }
+                }
+            }).data("kendoGrid");
+
+           //css 조정
+           var _hostname = (window.location != window.parent.location) ? document.referrer: document.location.href;
+           _hostname = _hostname.split("?");
+
+           if (_hostname != '' && _hostname.length < 2) { //portal access
+                tlayout = false;
+           }
+           $("#grid1 .k-grid-content table").css("table-layout", (tlayout) ? "auto" : "fixed");
+
+            // tooltip
+            $("#grid1 .k-grid-content table tr").kendoTooltip({
+                filter:"td:nth(0), td:nth(1)",
+                position: "bottom",
+                content: function(e){
+                    var target = $(e.target);
+                    var content = target.text();
+                    return content;
+                }
+            }).data("kendoTooltip");
+        }
+//===============================================================================================================================================
+        function setGrid2(data) {
+            dataSource2 = new kendo.data.DataSource({
+                type: "json",
+                data: data,
+                schema: {
+                    data: "CT_LIST",
+                    total: "CT_LIST.length",
+                    model: {
+                        fields: {
+
+                        }
+                    }
+                }
+            });
+            grid2 = $("#grid2").kendoGrid({
+                dataSource: dataSource2,
+                autoBind: true,
+                height:610, //508,
+                selectable:true,
+                scrollable:true,
+                // sortable: true,
+                resizable: true,
+                navigatable: true,
+                filterable:false,
+                editable:false,
+                columns: colMF,
+                dataBound:function(e){
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                    grid.thead.find("tr:eq(0)").find("th:eq(4)").css("border-left","solid 0px");
+                    if (grid.dataSource.total() == 0) {
+                        var colCount = grid.columns.length+25;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                    }
+
+                    // header
+                    $('.k-grid-header').css('padding-right', '0px');
+
+                    // 판매가 및 재료비합계 틀고정
+                    // e.sender.element.find(".fixedRow").remove();
+                    // var items = e.sender.items();
+                    // e.sender.element.height(e.sender.options.height);
+                    // items.each(function(key, value){
+                    //     var row = $(this);
+                    //     var dataItem = e.sender.dataItem(row);
+                    //     if(dataItem) {
+                    //         if(dataItem.ctdivtx == "판매가" || dataItem.ctdivtx == "재료비합계") {
+                    //             var item = row.clone();
+                    //             item.addClass("fixedRow");
+                    //             var thead = e.sender.element.find(".k-grid-header table thead");
+                    //             thead.append(item);
+                    //             row.hide();
+                    //         }
+                    //     }
+                    // })
+
+                    // 2018.11.06 틀고정 제거 및 row background color 변경
+                    var rows = e.sender.tbody.children();
+                    if(rows.length > 1) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var row = $(rows[j]);
+                            var dataItem = e.sender.dataItem(row);
+                            var text = dataItem.get("smdiv");
+
+                            if(text == "01") {
+                                $(".k-grid-content").find("tr:eq("+j+")").css("background-color","#CCCCCC");
+                            }
+                        }
+                    }
+                }
+            }).data("kendoGrid");
+
+            $("#grid2 .k-grid-content table tr").kendoTooltip({
+                filter:"td:nth(2), td:nth(3), td:nth(12), td:nth(13)",
+                position: "bottom",
+                content: function(e){
+                    var target = $(e.target);
+                    var content = target.text();
+                    return content;
+                }
+            }).data("kendoTooltip");
+        }
+
+//===============================================================================================================================================
+        function showGrid(matnr,flag){
+            if(typeof matnr != 'undefined' && matnr != ''){
+                if(flag){
+                        // addGrid(matnr);
+                        // subGrid(matnr);
+                    if(gridFlag){
+                        $("#gridTab li").each(function(e){
+                            $(this).removeClass("active");
+                        });
+                        var cnt = $("#gridTab li").length;
+
+                        if(cnt < 14){
+                            $("#gridTab").append("<li id='addTab_"+cnt+"' class='addTab active'><a href='#' onclick='return false '>"+matnr+"</a><i class='fa fa-close' id='Icon"+cnt+"' ></i></li>");
+                            $("#gridTab li").each(function(idx){
+                                if(idx != 0){
+                                    $(this).css("width","105px");
+                                }
+                            });
+                            $("#grid1").hide();
+                            $("#grid2").empty();    // 2018.11.06 탭 이동 시 grid 깨짐 오류
+                            $("#grid2").show();
+                            $(".showWrap").show();
+                            addGrid(matnr);
+                            //subGrid(matnr);
+                        }else{
+                            alert("탭 허용갯수를 초과 하였습니다.");
+                        }
+                    }
+                    flag = true
+                } else{
+                    addGrid(matnr);
+                    //subGrid(matnr);
+                    if(gridFlag){
+                        $("#grid1").hide();
+                        $("#grid2").empty();    // 2018.11.06 탭 이동 시 grid 깨짐 오류
+                        $("#grid2").show();
+                        $(".showWrap").show();
+                    }
+                }
+
+            } else{
+                $("#gridTab li").each(function(){
+                    $(this).removeClass("active");
+                });
+                $("#tab1").addClass("active");
+                $(".showWrap").hide();
+                $("#grid1").show();
+
+            }
+        }
+        function setForm(){
+            var dt = new Date();
+            $("#sDt").val(dt.getFullYear()+"."+(dt.getMonth()+1));
+            if(oyymm == '' || typeof oyymm == 'undefined'){
+                $("#eDt").val(dt.getFullYear()+"."+(dt.getMonth()+1));
+            }else{
+                $("#eDt").val(kendo.toString(kendo.parseDate(oyymm, 'yyyyMM'), 'yyyy.MM'));
+            }
+            $(".showStatus").hide();      
+            $(".showWrap").hide();
+
+            $("#MSP020").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0
+            });
+
+            $("#cartp").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth,
+                change:function(){
+                    getSOP3M();
+                },
+                select:function(e) {
+                    if(e.dataItem) {
+                        var dataItem = e.dataItem;
+                        cartpText = dataItem.text;
+                    }
+                }
+            });
+            $("#div03").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                select:function(e) {
+                    if(e.dataItem) {
+                        var dataItem = e.dataItem;
+                        div03Text = dataItem.text;
+                    }
+                }
+            });
+            getListbox();
+            getGListbox(2,'MSP020');
+
+            colMF = [
+                { field: "dcdnm_sm", title: "구분", width: 48 },
+                { title: "비교단계", columns:[
+                    { field: "maktx_bf", title: "품명", width: 110, attributes:{class:"st-left"} },
+                    { field: "idnrk_bf", title: "품번", width: 86, attributes:{class:"st-left"} },
+                    { field: "delty_bf", title: "직거래", width: 44 },
+                    { field: "menge_bf", title: "USG", width: 40, attributes:{class:"nr-right"}},
+                    { field: "meins_bf", title: "단위", width: 40 },
+                    { field: "waers_bf", title: "환종", width: 42 },
+                    { field: "netpr_bf", title: "단가", width: 69, attributes:{class:"nr-right"}, template:"#= repStr(netpr_bf) #" },
+                    { field: "mtamt_bf", title: "금액", width: 69, attributes:{class:"nr-right"}, template:"#= repStr(mtamt_bf) #" }
+                ]},
+                { title: "현재단계", columns:[
+                    { field: "maktx_af", title: "품명", width: 110, attributes:{class:"st-left"} },
+                    { field: "idnrk_af", title: "품번", width: 86, attributes:{class:"st-left"} },
+                    { field: "delty_af", title: "직거래", width: 44 },
+                    { field: "menge_af", title: "USG", width: 40, attributes:{class:"nr-right"}},
+                    { field: "meins_af", title: "단위", width: 40 },
+                    { field: "waers_af", title: "환종", width: 42 },
+                    { field: "netpr_af", title: "단가", width: 69, attributes:{class:"nr-right"}, template:"#= repStr(netpr_af) #" },
+                    { field: "mtamt_af", title: "금액", width: 69, attributes:{class:"nr-right"}, template:"#= repStr(mtamt_af) #" }
+                ]},
+                    // 2018.10.25 재료비합계 popup 제외
+                    { field: "acrsm", title: "차이", width: 69, template: function(rowItem){
+                            if(rowItem.cdcnm_sm == "재료비합계") {
+                                return "<span>"+repStr(rowItem.acrsm)+"</span>";
+                            } else {
+                                return "<a class='test2' href='\\\\#' onclick='return false'><span style='color:blue; text-decoration:underline'>"+repStr(rowItem.acrsm)+"</span></a> ";
+                            }
+                        }, attributes:{class:"nr-right"} },
+                { title: "변동사유별 금액", columns: [
+                    { field: "acr01", title: "사양", width: 69 },
+                    { field: "acr02", title: "구매가", width: 69, template: "#= repStr(acr02) #", attributes:{class:"nr-right"} },
+                    { field: "acr03", title: "원자재", width: 69, template: "#= repStr(acr03) #", attributes:{class:"nr-right"} },
+                    { field: "acr04", title: "약정", width: 69, template: "#= repStr(acr04) #", attributes:{class:"nr-right"} },
+                    { field: "acr05", title: "원가절감", width: 69, attributes:{class:"nr-right"}, template: "#= repStr(acr05) #" },
+                    { field: "acr06", title: "환율", width: 69, attributes:{class:"nr-right"}, template: "#= repStr(acr06) #" },
+                    { field: "acr07", title: "CKD", width: 69, template: "#= repStr(acr07) #", attributes:{class:"nr-right"} },
+                    { field: "acr99", title: "기타", width: 69, template: "#= repStr(acr99) #", attributes:{class:"nr-right"} }
+                ]}
+            ]
+
+            // 2018.11.06 dropdownlist adjust width automatically
+            var cartpDropDown = $("#cartp").data("kendoDropDownList");
+            cartpDropDown.list.width("auto");
+        }
+
+        // 2018.11.06 dropdownlist adjust width automatically
+        function adjustDropDownWidth(e) {
+            var listContainer = e.sender.list.closest(".k-list-container");
+            listContainer.width(listContainer.width() + kendo.support.scrollbar());
+        }
+
+        function getGListbox(type,grpid){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_04');
+            cfc.addParam('IV_GRPID', grpid, false);
+            cfc.addParam('IV_SPRAS', dsUserInfo.spras, false);
+            // cfc.addParam('IV_SPRAS', '3', false);
+            cfc.addParam('CT_LIST', '', false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    if(type == 1){
+                        var combobox_CT_DIV03 = $("#CT_DIV03").data("kendoDropDownList");
+                        data.CT_LIST.unshift({dcdid:'', dcdnm:'',grpid:'' })
+                        combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                        if(div03 == ''){
+                            combobox_CT_DIV03.select(0);
+                        }else{
+                            combobox_CT_DIV03.select(function(dataItem){
+                                return dataItem.dcdid === div03;
+                            });
+                        }
+                    }else if(type == 2){
+                    var combobox_MSP020 = $("#MSP020").data("kendoDropDownList");
+                        combobox_MSP020.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                        combobox_MSP020.select(0);
+                    }
+                }
+            });
+        }
+
+        function getListbox(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF229_08');
+            cfc.addParam('IV_UNAME', '', false);
+            cfc.addParam('CT_CARTP', '', false);
+            cfc.addParam('CT_DIV03', '', false);
+            cfc.addParam('CT_LCDIV', '', false);
+
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    // 차종
+                    var combobox_CARTP = $("#cartp").data("kendoDropDownList");
+                    data.CT_CARTP.unshift({value:'',text:''});
+                    combobox_CARTP.setDataSource(new kendo.data.DataSource({data:data.CT_CARTP}));
+                    if(typeof cartp != 'undefined' && cartp != ''){
+                        combobox_CARTP.select(function(dataItem){
+                            return dataItem.value === cartp;
+                        });
+                    }else{
+                        combobox_CARTP.select(0);
+                    }
+                    // 제품군
+                    var combobox_CT_DIV03 = $("#div03").data("kendoDropDownList");
+                    data.CT_DIV03.unshift({value:'',text:''});
+                    combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_DIV03}));
+
+                    if(typeof gdgcd != 'undefined' && gdgcd != ''){
+                        combobox_CT_DIV03.select(function(dataItem){
+                            return dataItem.value === div03;
+                        });
+                    }else{
+                        combobox_CT_DIV03.select(0);
+                    }
+
+                }
+            });
+        }
+
+        function setSearchBox() {
+            $("#sDt, #eDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM",
+                start:"year",
+                depth:"year"
+            });
+            $("#searchBtn").click(function(){
+                gridId = 'grid1';
+                cartpDR = $("#cartp").data("kendoDropDownList").value();
+                div03DR = $("#div03").data("kendoDropDownList").value();
+                $(".showWrap").hide();
+                $("#grid2").hide();
+                $("#grid1").show();
+                $("#gridTab li").each(function(){
+                    if(this.id != 'tab1'){
+                        $(this).remove();
+                    }
+                });
+                $("#tab1").addClass("active");
+                var cartp = $("#cartp").data("kendoDropDownList").value();
+                var div03 = $("#div03").data("kendoDropDownList").value();
+                if(typeof cartp != 'undefined' && cartp != ''){
+                    if(typeof div03 != 'undefined' && div03 != ''){
+                        $("#grid1").empty();
+                        initCreate('S');
+                        //$("#grid-title").text($("#pcrtp").data("kendoDropDownList").text() + " " + $("#div03").data("kendoDropDownList").text());
+                        $("#grid-title").text(cartpText+ " " + div03Text);
+                    }else{
+                        alert("제품군을 선택하세요.");
+                    }
+                }else{
+                    alert("차종을 선택하세요.");
+                }
+
+
+            });
+        }
+
+        function setEvent(){
+            $("#gridTab").on("mouseenter", ".addTab", function(e){
+                var id = e.target.parentElement.lastElementChild.id;
+                $("#"+id).show();
+            });
+            $("#gridTab").on("mouseout", ".addTab", function(e){
+                var id = e.target.parentElement.lastElementChild.id;
+                $("#"+id).hide();
+                $("#gridTab").on("mouseenter",".fa-close", function(e){
+                    $(this).show();
+                })
+            });
+
+
+            $("#gridTab").on("click", "i", function(e){
+                var id = e.target.parentElement.id;
+                $("#"+id).remove();
+                $(".showWrap").hide();
+                $("#grid1").show();
+                $("#gridTab li").each(function(){
+                    $(this).removeClass("active");
+                });
+                $("#tab1").addClass("active");
+            });
+            $("#gridTab").on("click", "a", function(e){
+                var matnr = e.target.text
+                var id = e.target.parentElement.id;
+                $("#gridTab li").each(function(){
+                    $(this).removeClass("active");
+                });
+                $("#"+id).addClass("active");
+                if(id == "tab1"){
+                    gridId = 'grid1'
+                    $(".showWrap").hide();
+                    $("#grid1").show();
+                }else{
+                    gridId = 'grid2'
+                    $(".showWrap").show();
+                    $("#grid1").hide();
+                    if(matnr != ""){
+                        $("#grid2").empty();    // 2018.11.06 탭 이동 시 grid 깨짐 오류
+                        addGrid(matnr);
+                        //subGrid(matnr);
+                    }
+
+                }
+            })
+            $("#grid1").on("click", "a.matnr", function(){
+                gridId = 'grid2';
+                var dataItem = grid1.dataItem($(this).closest("tr"));
+                flag = true;
+                matnr = dataItem.matnr;
+                $("#gridTab li").each(function(){
+                    if($(this).find("a").text() == matnr){
+                        $("#gridTab li").each(function(){
+                            $(this).removeClass("active")
+                        })
+                        $(this).addClass("active");
+                        flag = false;
+                    }
+                });
+                showGrid(dataItem.matnr,flag);
+            });
+
+            $("#grid2").on("click", "a.test2", function(){
+                // var dataItem = grid2.dataItem(grid2.select(e));
+                // 2018.07.23
+                //판매가일 경우 bf_matnr, cr_matnr ''
+                //재료비 : bf_matnr/cr_matnr 둘중 값있는것으로 전송
+                // popup(dataItem.matnr, dataItem.bf_matnr, sDt, eDt);
+
+                // 2019.01.09 parameter 수정
+                // var dataItem = grid2.dataItem($(this).closest("tr"));
+                // var _text = $(this).closest("tr").children()[0].innerText;
+                // if(_text.trim() == "판매가") {
+                //     var _matnr = $(this).closest("tr").children()[3].innerText;
+                //     popup(_matnr, '', dataItem.tskno, dataItem.seqno_tsk, sDt, eDt);
+                // } else if(_text.trim() == "재료비") {
+                //     if (dataItem.bf_matnr == '') {
+                //         popup(dataItem.matnr, dataItem.cr_matnr, dataItem.tskno, dataItem.seqno_tsk, sDt, eDt);
+                //     } else {
+                //         popup(dataItem.matnr, dataItem.bf_matnr, dataItem.tskno, dataItem.seqno_tsk, sDt, eDt);
+                //     }
+                // }
+
+                var dataItem = grid2.dataItem($(this).closest("tr"));
+                popup(dataItem);
+            });
+
+            $("#excBtn").click(function(e){
+                if (grid1.dataSource.total() > 0) {
+
+                    if(gridId == "grid1" || typeof gridId == 'undefined' || gridId == ''){
+                        var xlsTpl = kendo.template($('#xlsTpl').html());
+                        $("#list").html(xlsTpl({rows:grid1.dataSource.data()}));
+                    }else if(gridId == "grid2"){
+                        var xlsTpl = kendo.template($('#xlsTpl2').html());
+                        $("#list2").html(xlsTpl({rows:grid2.dataSource.data()}));
+                    }
+
+                    var tab_text="";
+                    var tHtml = "";
+                    var textRange; var j=0;
+                    var eDiv = "";
+
+                    if(gridId == 'grid1'){
+                        eDiv = $("#list");
+                    }else{
+                        eDiv = $("#list2")
+                    }
+
+
+                    eDiv.find("table").attr("border" , 1);
+                    tHtml = eDiv.html();
+                    eDiv.find("table").removeAttr("border");
+
+                    tab_text = tHtml;
+                    tab_text = tab_text.replace(/<a[^>]*>|<\/a>/g, "");//remove if u want links in your table
+                    tab_text = tab_text.replace(/<img[^>]*>/gi,""); // remove if u want images in your table
+                    tab_text = tab_text.replace(/<input[^>]*>|<\/input>/gi, ""); // reomves input params
+
+                    var ua = window.navigator.userAgent;
+                    var msie = ua.indexOf("MSIE ");
+
+                    if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./))      // If Internet Explorer
+                    {
+                        if(gridId == 'grid1'){
+                            txtArea1.document.open("txt/html","replace");
+                            txtArea1.document.write(tab_text);
+                            txtArea1.document.close();
+                            txtArea1.focus();
+                            sa = txtArea1.document.execCommand("SaveAs", true, excel_file_name + ".xls");
+                        } else{
+                            txtArea2.document.open("txt/html","replace");
+                            txtArea2.document.write(tab_text);
+                            txtArea2.document.close();
+                            txtArea2.focus();
+                            sa = txtArea2.document.execCommand("SaveAs", true, excel_file_name + ".xls");
+                        }
+                        return (sa);
+                    }
+                    else {                //other browser not tested on IE 11
+                        var a = document.createElement('a');
+                        a.href = 'data:application/vnd.ms-excel,' + encodeURIComponent(tab_text);
+                        a.download = excel_file_name + ".xls";
+                        a.click();
+                        e.preventDefault();
+                        //sa = window.open('data:application/vnd.ms-excel,' + encodeURIComponent(tab_text));
+                    }
+                } else {
+                    alert("내역이 없습니다.");
+                }
+            });
+        }
+
+        function popup(dataItem){
+            var popupUrl, popupWidth, popupHeight, popupTop, popupLeft; // url, 가로길이, 세로길이, y축 좌표값, x축 좌표값
+            popupUrl = "../Z_MSP_205/popup.htm";
+            popupWidth = (screen.width/2) + 300;
+            popupHeight = 550;
+            popupTop = 50;
+            popupLeft = 50;
+
+            var popupParam = "?IV_MATNR=" + matnr;
+            popupParam += "&IV_CARTP=" + cartp;
+            popupParam += "&IV_DIV03=" + div03;
+            popupParam += "&IV_SPMON_BF=" + sDt;
+            popupParam += "&IV_SPMON_AF=" + eDt;
+            popupParam += "&IV_TSKNO=" + dataItem.tskno;
+            popupParam += "&IV_SEQNO=" + dataItem.seqno;
+            popupParam += "&IV_SEQNR=" + dataItem.seqnr;
+            popupParam += "&IV_SMDIV=" + dataItem.smdiv;
+            popupParam += "&IV_ACRSM=" + dataItem.acrsm;
+            popupParam += "&IV_IDNRK_AF=" + dataItem.idnrk_af;
+            popupParam += "&IV_IDNRK_BF=" + dataItem.idnrk_bf;
+
+            var popupOption = 'width='+popupWidth+', height='+popupHeight+', top='+popupTop+', left='+popupLeft+', menubar=no, location=no, resizeable=yes, scrollbars=yes';  // 메뉴바 no, 주소창 no, 창변형 yes, 스크롤바 yes
+            window.open(popupUrl + popupParam, '', popupOption);
+        }
+
+
+        function total(id, name) {      /* total 계산 */
+            if(id.indexOf("Total") != -1) {
+                return '<span class=total>'+id+'</span>';
+            } else {
+                return '<span>'+name+'</span>';
+            }
+        }
+
+        $.fn.rowspan = function(colIdx, isStats) {
+            return this.each(function(){
+                var that;
+                $('tr', this).each(function(row) {
+                    $('td',this).eq(colIdx).filter(':visible').each(function(col) {
+
+                        if ($(this).html() == $(that).html()
+                            && (!isStats || isStats && $(this).prev().html() == $(that).prev().html())) {
+                            rowspan = $(that).attr("rowspan") || 1;
+                            rowspan = Number(rowspan)+1;
+
+                            $(that).attr("rowspan",rowspan);
+
+                            // do your action for the colspan cell here
+                            $(this).hide();
+
+                            //$(this).remove();
+                            // do your action for the old cell here
+
+                        } else {
+                            that = this;
+                        }
+
+                        // set the that if not already set
+                        that = (that == null) ? this : that;
+                    });
+                });
+            });
+        };
+        // function historyBack(){
+        //     sendForm("../Z_MSP_207/findChangeReasonStatus.htm",{"IV_CARTP": cartp,"IV_DIV03":div03 })
+        // }
+    </script>
+</head>
+<body>
+<div id="container">
+        <!-- <div style="text-align: right;"><a href="javascript:historyBack()" class="btn btn-blue" style="margin-top: -10px"><i class="fa fa-arrow-left"></i> 이전화면</a></div> -->
+        <h2 class="h2-tit">제품별 상세조회(BOM)</h2>
+
+        <div class="hd-sch">
+            <div class="dis-in txKeep">
+                <span class="tit-tx">차종</span>
+                    <input type="hidden" id="cartp" class="header_sch" style="width:160px;"/>
+                <span class="tit-tx">제품군</span>
+                    <input type="hidden" id="div03" class="header_sch" style="width:150px;"/>
+                <span class="tit-tx"><strong>비교단계 : </strong></span>
+                    <input type="text" id="sDt"/>
+                <span class="tit-tx " style="margin:0 20px;"><strong>현재단계 : </strong></span>
+                    <input type="text" id="eDt"/>
+            </div>
+            <div class="right" style="margin: 0px 180px 0px 0px; display: none">
+                <span class="tit-tx">단위:</span>
+                <input type="text" id="MSP020" style="width:150px"/>
+            </div>
+            <div class="right">
+                <a id="searchBtn" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                <a id="excBtn" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+            </div>
+        </div>
+
+
+        <div class="row-group">
+            <div class="rows">
+                <div class="row-tit">
+                    <h3 class="tit"><span id="grid-title"></span></h3>
+                    <div class="div-tab right">
+                        <ul id="gridTab">
+                            <li id="tab1" class="active tab"><a href="#" onclick="return false">시스템</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div id="defaultView" style="text-align: center;"><span style="font-weight: bold">검색조건을 선택하세요.</span></div>
+                <div id="grid1" class="relativeGrid"></div>
+                <div id="grid2" class="showWrap relativeGrid"></div>
+            </div>
+        </div>
+        <!-- // 2018.10.11 국내 고도화
+        <div class="row-group showWrap">
+            <div class="rows">
+                <div class="row-tit">
+                    <h3 class="tit">담당팀별 재료비</h3>
+                </div>
+                <div id="subGrid2"></div>
+            </div>
+        </div>
+        // 2018.10.11 국내 고도화 -->
+</div><!-- /container -->
+<div id="list" style="display: none"></div>
+<iframe id="txtArea1" style="display: none"></iframe>
+<div id="list2" style="display: none"></div>
+<iframe id="txtArea2" style="display: none"></iframe>
+</body>
+</html>
+<script type="text/x-kendo-template" id="xlsTpl">
+    <table class="list_sub" id="tb1">
+    <thead>
+        <tr>
+            <th rowspan="2">품명</th>
+            <th rowspan="2">품번</th>
+            <th rowspan="2">USG</th>
+            <th rowspan="2">OPT</th>
+            <th rowspan="2">구분</th>
+            <th colspan="2">금액</th>
+            <th rowspan="2">차이</th>
+            <th rowspan="2">사양</th>
+            <th rowspan="2">구매가</th>
+            <th rowspan="2">원자재</th>
+            <th rowspan="2">약정</th>
+            <th rowspan="2">원가절감</th>
+            <th rowspan="2">환율</th>
+            <th rowspan="2">CKD</th>
+            <th rowspan="2">기타</th>
+        </tr>
+        <tr>
+            <th>비교단계</th>
+            <th>현재단계</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+               <td>#= rows[i].maktx #</td>
+               <td>#= rows[i].matnr #</td>
+               <td>#= rows[i].usgrt #</td>
+               <td>#= rows[i].optrt #</td>
+               <td>#= rows[i].dcdnm_sm #</td>
+               <td>#= rows[i].bfamt #</td>
+               <td>#= rows[i].afamt #</td>
+               <td>#= rows[i].acrsm #</td>
+               <td>#= rows[i].acr01 #</td>
+               <td>#= rows[i].acr02 #</td>
+               <td>#= rows[i].acr03 #</td>
+               <td>#= rows[i].acr04 #</td>
+               <td>#= rows[i].acr05 #</td>
+               <td>#= rows[i].acr06 #</td>
+               <td>#= rows[i].acr07 #</td>
+               <td>#= rows[i].acr99 #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
+<script type="text/x-kendo-template" id="xlsTpl2">
+    <table class="list_sub" id="tb2">
+    <thead>
+        <tr>           
+            <th rowspan="2">구분</th>
+            <th colspan="8">비교단계</th>
+            <th colspan="8">현재단계</th>
+            <th colspan="9">변동사유별 금액</th>
+        </tr>
+        <tr>
+            <th>품명</th>
+            <th>품번</th>
+            <th>직거래</th>
+            <th>USG</th>
+            <th>단위</th>
+            <th>환종</th>
+            <th>단가</th>
+            <th>금액</th>
+
+            <th>품명</th>
+            <th>품번</th>
+            <th>직거래</th>
+            <th>USG</th>
+            <th>단위</th>
+            <th>환종</th>
+            <th>단가</th>
+            <th>금액</th>
+
+            <th>차이</th>
+            <th>사양</th>
+            <th>구매가</th>
+            <th>원자재</th>
+            <th>약정</th>
+            <th>원가절감</th>
+            <th>환율</th>
+            <th>CKD</th>
+            <th>기타</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+           <td>#= rows[i].dcdnm_sm #</td>
+           <td>#= rows[i].maktx_bf #</td>
+           <td>#= rows[i].idnrk_bf #</td>
+           <td>#= rows[i].delty_bf #</td>
+           <td>#= rows[i].menge_bf #</td>
+           <td>#= rows[i].meins_bf #</td>
+           <td>#= rows[i].waers_bf #</td>
+           <td>#= rows[i].netpr_bf #</td>
+           <td>#= rows[i].mtamt_bf #</td>
+
+           <td>#= rows[i].maktx_af #</td>
+           <td>#= rows[i].idnrk_af #</td>
+           <td>#= rows[i].delty_af #</td>
+           <td>#= rows[i].menge_af #</td>
+           <td>#= rows[i].meins_af #</td>
+           <td>#= rows[i].waers_af #</td>
+           <td>#= rows[i].netpr_af #</td>
+           <td>#= rows[i].mtamt_af #</td>
+
+           <td>#= rows[i].acrsm #</td>
+           <td>#= rows[i].acr01 #</td>
+           <td>#= rows[i].acr02 #</td>
+           <td>#= rows[i].acr03 #</td>
+           <td>#= rows[i].acr04 #</td>
+           <td>#= rows[i].acr05 #</td>
+           <td>#= rows[i].acr06 #</td>
+           <td>#= rows[i].acr07 #</td>
+           <td>#= rows[i].acr99 #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
