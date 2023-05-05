@@ -1,0 +1,268 @@
+<%@page language="abap"%>
+<!doctype html>
+<html lang="ko">
+<head>
+    <title>근무관리시스템 M Plan</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../z_ess_021/js/moment.js"></script>
+
+    <script>
+        var cymd = '<%=sy-datum(8) %>';
+        var ivHass = 'X';
+        var dataSource, grid, statusSource;
+
+        $(document).ready(function() {
+            setTitle();
+
+            // 폼설정
+            setForm();
+
+            // 검색 세팅
+            setSearchBox();
+
+            // 버튼 세팅
+            setButton();
+
+            // 그리드 셋팅
+            setGrid();
+
+        });
+
+        function setTitle() {
+            if (ivHass == 'X') {
+                $(".hassTitle").text("업무대행");
+            } else {
+                $(".hassTitle").text("신청");
+            }
+        }
+
+
+        function setForm() {
+            $("#sDt, #eDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            $("#sDt, #eDt").attr("readonly", true);
+        }
+
+        function setSearchBox() {
+            // 기본 날짜 세팅
+            var beforeWeek = moment(cymd,'YYYYMMDD').subtract(1, 'week');
+            //$("#sDt").val(kendo.toString(kendo.parseDate(beforeWeek.format('YYYYMMDD'), "yyyyMMdd"),"yyyy.MM.dd"));
+            //$("#eDt").val(kendo.toString(kendo.parseDate(cymd, "yyyyMMdd"),"yyyy.MM.dd"));
+            $("#sDt").val(moment().startOf("year").format("YYYY.MM.DD"));
+            $("#eDt").val(moment().endOf("year").format("YYYY.MM.DD"));
+
+            // 검색 버튼
+            $("#searchBtn").click(function() {
+                grid.dataSource.read(getListData());
+            });
+        }
+
+
+        function getListData() {
+            var dd_ET_BEGDA= $("#sDt").val().replace(/\./g, '');
+            var dd_ET_ENDDA= $("#eDt").val().replace(/\./g, '');
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PN_GET_LIST_DATA");
+            cfc.addParam('IV_HASS',   ivHass,  false);
+            cfc.addParam('IV_BEGDA',  dd_ET_BEGDA, false);
+            cfc.addParam('IV_ENDDA',  dd_ET_ENDDA, false);
+
+            return cfc.getData();
+
+        }
+
+        function setButton() {
+            // 신청방법안내 팝업
+            $("#informBtn").click(function() {
+                sendFormPopup('../Z_ESS_525/popup_inform.htm','popup', '', 710, 400);
+            });
+
+            // 조회
+            $("#showBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'R','CS_INFO': kendo.stringify(dataItem)});
+                }
+            });
+
+            // 신청
+            $("#requestBtn").click(function() {
+                sendForm("create.htm", {'FLAG': '','CS_INFO': ''});
+            });
+
+            // 재상신
+            $("#reRequestBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (!(dataItem.wkfst == "R" || dataItem.wkfst == "C")) {
+                    alert("결재반려되거나 결재취소한 건에 대해서만 재상신 가능합니다.");
+                } else {
+                    sendForm("create.htm", {'FLAG': 'X','CS_INFO': kendo.stringify(dataItem)});
+                }
+            });
+
+            // 취소
+            $("#cancelBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (dataItem.wkfst != "Q") {
+                    alert("결재진행중이거나 결재승인 또는 결재반려된 경우 취소가 되지 않습니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'C','CS_INFO': kendo.stringify(dataItem)});
+                }
+            });
+
+            // 삭제
+            $("#deleteBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (dataItem.wkfst != "C") {
+                    alert("결재취소한 건에 대해서만 신청리스트 상에서 삭제 가능합니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'D','CS_INFO': kendo.stringify(dataItem)});
+                }
+            });
+
+        }
+
+        function setGrid() {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 10,
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length"
+                },
+                requestEnd: function(e) {
+                    //var pernr = e.response.EV_PERNR;
+                    //$("#pernrt").val(pernr);
+                    //console.log(pernr);
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 420,
+                sortable: false,
+                resizable: true,
+                pageable: true,
+                navigatable: true,
+                selectable: true,
+                editable: false,
+                columns: [
+                    lineClick,
+                    { field: "reqdt",  title: "신청일자",   width: 80,  template: "#= kendo.toString(kendo.parseDate(reqdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "appid",  title: "신청No.", width: 90},
+                    { field: "hname",  title: "신청사원", width: 80},
+                    { field: "mastx",  title: "휴복직 · 단축근로 구분",   width: 130},
+                    { field: "zmassgt",  title: "사유", width: 120},
+                    { field: "period",  title: "기간",   width: 130},
+                    { field: "appdt",  title: "승인일자",  width: 80, template: "#= appdt == '00000000' ? '' : kendo.toString(kendo.parseDate(appdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "wkfstt",  title: "상태", width: 70}
+
+                ]
+            }).data("kendoGrid");
+
+            grid.bind("dataBound", function(e) {
+                    // 그리드 데이터 없을때
+                    var msg = "휴복직 내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.data().length == 0) {
+                        var colCount = grid.columns.length;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                    } else{
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+            });
+        }
+
+    </script>
+</head>
+
+
+<body>
+    <section id="container">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>휴가/휴직</span>
+            <span>휴복직 · 단축근로</span>
+            <strong class="hassTitle">신청</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>휴가/휴직</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>휴복직 · 단축근로 / <span class="hassTitle">신청</span></h4>
+            <!-- //title -->
+
+            <!-- search -->
+            <div class="search_box">
+                <table>
+                    <colgroup>
+                        <col width="10%" />
+                        <col width="*" />
+                    </colgroup>
+                    <tr>
+                        <th>조회기간</th>
+                        <td>
+                            <input type="text" id="sDt" style="width:120px" />
+                            ~
+                            <input type="text" id="eDt" style="width:120px" />
+
+                            <button type="button" id="searchBtn" class="btn_search">검색</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- button -->
+            <div class="area_divide">
+                <div class="left">
+                    <span>※ 근무관리-휴직제도 안내를 참고해 주시기 바랍니다.</span>
+                </div>
+                <div class="right">
+                    <div class="btn_wrap">
+                        <button type="button" id="informBtn" class="btn_basic">신청방법안내</button>
+                        <button type="button" id="showBtn" class="btn_basic" >조회</button>
+                        <button type="button" id="requestBtn" class="btn_basic_b" >신청</button>
+                        <button type="button" id="reRequestBtn" class="btn_basic" >재상신</button>
+                        <button type="button" id="cancelBtn" class="btn_basic" >취소</button>
+                        <button type="button" id="deleteBtn" class="btn_basic" >삭제</button>
+                    </div>
+                </div>
+            </div>
+            <!-- //button -->
+
+            <div id="grid" class="allow_user"  ></div>
+
+        </article>
+        <!-- //contents -->
+
+    </section>
+</body>
+</html>
