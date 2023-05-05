@@ -1,0 +1,1396 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>양산품번 매칭</title>
+
+    <%@include file="../z_msp_100/inc_menu.htm" %>
+    <script src="../Z_MSP_100/js/css/common_css.js"></script>
+    <script src="../Z_MSP_100/js/cpexcel.js"></script>
+    <script src="../Z_MSP_100/js/shim.js"></script>
+    <script src="../Z_MSP_100/js/xlsx.js"></script>
+    <script src="../Z_MSP_100/js/jszip.js"></script>
+    <script src="../Z_MSP_100/js/xlsx.full.min.js"></script>
+    <style type="text/css"> i{cursor: pointer;} </style>
+    <script>
+        var dataSource, grid, sheetData, prtStatus, matResult, icon;
+        var iCnt = 0;
+        var checkedVal = false;
+        var flag = false;
+        var excel_file_name = "양산품번매칭"
+        $(document).ready(function() {
+            menuAuth();
+            setForm();
+            getListbox_Loop();
+            getListbox();
+            setButton();
+            initCreate('');
+            //initCheck();
+
+            $.makeExcel = function(_template, _excelData, _excelFile) {
+                $("#list").html(_template({rows:_excelData}));
+                var tab_text="";
+                var tHtml = "";
+                var textRange; var j=0;
+                var eDiv = $("#list");
+
+
+                eDiv.find("table").attr("border" , 1);
+                tHtml = eDiv.html();
+                eDiv.find("table").removeAttr("border");
+
+                tab_text = tHtml;
+                //tab_text = tab_text.replace(/<a[^>]*>|<\/a>/g, "");//remove if u want links in your table
+                //tab_text = tab_text.replace(/<img[^>]*>/gi,""); // remove if u want images in your table
+                //tab_text = tab_text.replace(/<input[^>]*>|<\/input>/gi, ""); // reomves input params
+
+                var ua = window.navigator.userAgent;
+                var msie = ua.indexOf("MSIE ");
+
+                if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./)) {     // If Internet Explorer
+                    txtArea1.document.open("txt/html","replace");
+                    txtArea1.document.write(tab_text);
+                    txtArea1.document.close();
+                    txtArea1.focus();
+                    sa = txtArea1.document.execCommand("SaveAs", true, _excelFile+".xls");
+                    return (sa);
+                } else {                                                                //other browser not tested on IE 11
+                    var a = document.createElement('a');
+                    a.href = 'data:application/vnd.ms-excel,' + encodeURIComponent(tab_text);
+                    a.download = _excelFile+".xls";
+                    a.click();
+                    // e.preventDefault();
+                }
+            }
+        });
+
+// initCreate - setGridData
+// =============================================================================================================================================
+        function initCreate(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData(type),
+                type: "POST",
+                success: function(data) {
+                    // setCreate(data,type);
+                    // 2019.01.09 init 실행 시 grid 세팅
+                    // if(data.E_SUBRC == "0 " || data.E_SUBRC == ""){
+                    if(type == 'S'){
+                        $("#grid").empty();
+                    }
+                    // grid.dataSource.read(getCreateData(type));
+                    // grid.setDataSource(new kendo.data.DataSource({data: data.CT_TAB}));
+                    setGrid('D',data);
+                    // setSheetData(data.CT_TAB);
+                    setData(data);
+                    // mergeGrid(data);
+                    // for(var i =1; i < 7; i++){
+                    //     $("#grid").rowspan(i)
+                    // }
+                    $("#grid").rowspan(1);
+                    $("#grid").rowspan(2);
+
+                    $(".k-grid-content-locked table").rowspan(3);
+                    $(".k-grid-content-locked table").rowspan(4);
+                    $(".k-grid-content-locked table").rowspan(5);
+                    // } else{
+                    // if(data.E_SUBRC.trim() == '4') alert('일치하는 데이터가 없습니다.');
+                    // }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+
+       // $(function(){
+       //    $("#chky").click(function() {
+       //         if (this.checked) {
+       //              alert('check');
+       //          } else {
+       //              alert('xxxcheck');
+       //          }
+       //      });
+       //  });
+        function getCreateData(type) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF212_01");
+            //cfc.addParam('IV_MGTYN', '', false);
+            if(type == ''){
+                cfc.addParam('IV_INIT', 'Y', false);
+                cfc.addParam('IV_MGTYN', 'Y', false);
+            }else{
+                cfc.addParam('IV_INIT', '', false);
+                cfc.addParam('IV_MGTYN', $("#CT_MGTYN").data("kendoDropDownList").value(), false);
+            }
+
+            cfc.addParam('IV_DVDIV', $("#CT_DVDIV").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_LCDIV', $("#CT_LCDIV").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CLINT', $("#CT_CLINT").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CARTP', $("#CT_CARTP").data("kendoDropDownList").value(), false);
+            // cfc.addParam('IV_DIV01', $("#CT_DIV01").data("kendoDropDownList").value(), false);
+            // cfc.addParam('IV_DIV02', $("#CT_DIV02").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#CT_DIV03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_PLTCD', $("#CT_NATCD").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_SRCH', $("#srchBox").val(), false);
+            cfc.addParam('CT_TAB','',false);
+            return cfc.getData();
+        }
+
+        // 2019.01.09 init 실행 시 grid 세팅
+        // function setCreate(data,type) {
+        //     if(data.E_SUBRC == "0 " || data.E_SUBRC == ""){
+        //         if(type == 'S'){
+        //             $("#grid").empty();
+        //         }
+        //         // grid.dataSource.read(getCreateData(type));
+        //         // grid.setDataSource(new kendo.data.DataSource({data: data.CT_TAB}));
+        //         setGrid('D',data);
+        //         setSheetData(data.CT_TAB);
+        //         setData(data);
+        //         // mergeGrid(data);
+        //         // for(var i =1; i < 7; i++){
+        //         //     $("#grid").rowspan(i)
+        //         // }
+        //         $("#grid").rowspan(1);
+        //         $("#grid").rowspan(2);
+
+        //         $(".k-grid-content-locked table").rowspan(3);
+        //         $(".k-grid-content-locked table").rowspan(4);
+        //         $(".k-grid-content-locked table").rowspan(5);
+        //     } else{
+        //         alert('일치하는 데이터가 없습니다.');
+        //     }
+        // }
+
+        $.fn.rowspan = function(colIdx, isStats) {
+            return this.each(function(){
+                var that;
+                $('tr', this).each(function(row) {
+                    $('td',this).eq(colIdx).filter(':visible').each(function(col) {
+                        if ($(this).html() == $(that).html() && (!isStats || isStats && $(this).prev().html() == $(that).prev().html())) {
+                            rowspan = $(that).attr("rowspan") || 1;
+                            rowspan = Number(rowspan)+1;
+                            $(that).attr("rowspan",rowspan);
+
+                            // do your action for the colspan cell here
+                            $(this).hide();
+
+                            //$(this).remove();
+                            // do your action for the old cell here
+                        } else {
+                            that = this;
+                        }
+                        // set the that if not already set
+                        that = (that == null) ? this : that;
+                    });
+                });
+            });
+        };
+
+        function mergeGrid(data){
+            var csInfo = data.CT_TAB;
+            var a = null
+            for(var i = 0; i < csInfo.length; i++){
+                var b = csInfo[i].pmscd
+                var cnt = 0;
+                if(a == null){
+                    a = b;
+                    cnt = i;
+                }else if(a == b){
+                    var c = $("#grid>.k-grid-content-locked>table").find("tr:eq("+i+")").find("td:eq(1)");
+                    var d = $("#grid>.k-grid-content-locked>table").find("tr:eq("+cnt+")").find("td:eq(1)");
+                    c.hide();
+                    d.attr("rowspan", typeof c.attr("rowspan") == "undefined" ? 2 : parseInt(d.attr("rowspan")) +1);
+                }else{
+                    a = b;
+                }
+            }
+        }
+
+        function setData(data){
+            $("#gridCnt").text(data.CT_TAB.length);
+        }
+// =============================================================================================================================================
+
+        function openSearchCodePopup(callBack) {
+            if (typeof callBack == 'undefined') {
+                alert('콜백 함수명이 필요합니다.');
+            } else {
+                var left  = (screen.availWidth  - 991 ) / 2;
+                var top   = (screen.availHeight - 550 ) / 2;
+                var param = 'width=991,height=550,top=' + top + ',left=' + left + 'scrollbars=yes';
+                // 2018.10.26 품번 필드에 data 세팅
+                // var url = "../Z_MSP_100/manageSearchCd.htm" + "?callBack=" + callBack + "&IV_SPRAS=" + dsUserInfo.spras;
+                var dataItem = grid.dataItem(grid.select());
+                var url = "../Z_MSP_100/manageSearchCd.htm" + "?callBack=" + callBack + "&IV_SPRAS=" + dsUserInfo.spras + "&IV_MATNR=" + dataItem.matnr;
+                var win = window.open(url, 'prtcdSearch', param);
+                win.focus();
+            }
+        }
+
+        function setForm(){
+            // 관리대상
+            $("#CT_MGTYN").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+            });
+            // 개발구분
+            $("#CT_DVDIV").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+            });
+            // 지역
+            $("#CT_LCDIV").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 고객사
+            $("#CT_CLINT").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 차종
+            $("#CT_CARTP").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 제품군
+            $("#CT_DIV03").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 생산공장
+            $("#CT_NATCD").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 2018.11.14 dropdownlist adjust width automatically
+            var lcdivDropDown = $("#CT_LCDIV").data("kendoDropDownList");
+            var clintDropDown = $("#CT_CLINT").data("kendoDropDownList");
+            var cartpDropDown = $("#CT_CARTP").data("kendoDropDownList");
+            var div03DropDown = $("#CT_DIV03").data("kendoDropDownList");
+            var natcdDropDown = $("#CT_NATCD").data("kendoDropDownList");
+
+            lcdivDropDown.list.width("auto");
+            clintDropDown.list.width("auto");
+            cartpDropDown.list.width("auto");
+            div03DropDown.list.width("auto");
+            natcdDropDown.list.width("auto");
+        }
+
+        // 2018.11.14 dropdownlist adjust width automatically
+        function adjustDropDownWidth(e) {
+            var listContainer = e.sender.list.closest(".k-list-container");
+            listContainer.width(listContainer.width() + kendo.support.scrollbar());
+        }
+
+        function getListbox_Loop(){
+            // 개발구분
+            var tmpArr = [{dcdnm:"All", dcdid:''},{dcdnm:"대상", dcdid:'Y'},{dcdnm:"비대상",dcdid:"N"}];
+            var combobox_CT_MGTYN = $("#CT_MGTYN").data("kendoDropDownList");
+            combobox_CT_MGTYN.setDataSource(new kendo.data.DataSource({data:tmpArr}));
+            combobox_CT_MGTYN.select(1);
+            var grpid;
+            for(var i = 0; i < 5; i++){
+                if (i == 0){ grpid = 'MSP001'}
+                if (i == 1){ grpid = 'MSP003'}
+                if (i == 2){ grpid = 'MSP014'}
+                if (i == 3){ grpid = 'MSP009'}
+                if (i == 4){ grpid = 'MSP015'}
+                getGListbox(i,grpid);
+            }
+        }
+
+        function getGListbox(type,grpid){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_04');
+            cfc.addParam('IV_GRPID', grpid, false);
+            cfc.addParam('IV_SPRAS', dsUserInfo.spras, false);
+            cfc.addParam('CT_LIST', '', false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    getDropdownList(type,data);
+                }
+            });
+        }
+
+        function getDropdownList(type,data){
+            if(type == 0 ){
+                // 개발구분
+                var combobox_CT_DVDIV = $("#CT_DVDIV").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_CT_DVDIV.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_CT_DVDIV.select(2);
+            }else if(type == 1){
+                // 지역구분
+                // var combobox_CT_LCDIV = $("#CT_LCDIV").data("kendoDropDownList");
+                // data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                // combobox_CT_LCDIV.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                // combobox_CT_LCDIV.select(0);
+            }else if(type == 2){
+                // 고객사
+                var combobox_CT_CLINT = $("#CT_CLINT").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_CT_CLINT.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_CT_CLINT.select(0);
+            }else if(type == 3){
+                // var combobox_CT_DIV03 = $("#CT_DIV03").data("kendoDropDownList");
+                // data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                // combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                // combobox_CT_DIV03.select(0);
+            }else if(type == 4){
+                var combobox_NATCD = $("#CT_NATCD").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_NATCD.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_NATCD.select(0);
+            }
+        }
+
+        function getListbox(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF229_08');
+            cfc.addParam('IV_UNAME', '', false);
+            cfc.addParam('CT_CARTP', '', false);
+            cfc.addParam('CT_DIV03', '', false);
+            cfc.addParam('CT_LCDIV', '', false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    // 차종
+                    var combobox_CARTP = $("#CT_CARTP").data("kendoDropDownList");
+                    data.CT_CARTP.unshift({value:'',text:'All'});
+                    combobox_CARTP.setDataSource(new kendo.data.DataSource({data:data.CT_CARTP}));
+                    if(typeof cartp != 'undefined' && cartp != ''){
+                        combobox_CARTP.select(function(dataItem){
+                            return dataItem.value === cartp;
+                        });
+                    }else{
+                        combobox_CARTP.select(0);
+                    }
+                    // 제품군
+                    var combobox_CT_DIV03 = $("#CT_DIV03").data("kendoDropDownList");
+
+                    data.CT_DIV03.unshift({value:'',text:'All'});
+                    combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_DIV03}));
+
+                    if(typeof div03 != 'undefined' && div03 != ''){
+                        combobox_CT_DIV03.select(function(dataItem){
+                            return dataItem.value === div03;
+                        });
+                    }else{
+                        combobox_CT_DIV03.select(0);
+                    }
+                    // 지역
+                    var combobox_CT_LCDIV = $("#CT_LCDIV").data("kendoDropDownList");
+                    // data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                    data.CT_LCDIV.unshift({value:'',text:'All'});
+                    combobox_CT_LCDIV.setDataSource(new kendo.data.DataSource({data:data.CT_LCDIV}));
+                    combobox_CT_LCDIV.select(0);
+                }
+            });
+        }
+
+        function menuAuth(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF225_01');
+            cfc.addParam('IV_EMPNO', '', false);
+            cfc.addParam('CT_LIST', '', false);
+            var data = callLoadData(cfc);
+            // 2018.11.08 시스템 권한(사용자: 'AUTH001'/관리자: 'AUTH002'/시스템관리자: 'AUTH003')
+            // if(data.CT_LIST.length > 0 ){
+            //     if(data.CT_LIST[0].athcd == 'AUTH003' || data.CT_LIST[0].athcd == 'AUTH002'){
+            //         flag = true;
+            //     }else{
+            //         flag = false;
+            //     }
+            // }
+            var rs = data.CT_LIST;
+            for(var i=0; i<rs.length; i++) {
+                flag = (rs[i].athcd == 'AUTH001')? false : true;
+            }
+        }
+
+        function setButton(){
+            // 품번 삭제 icon
+            if(flag) {
+                $("#grid").on("click", ".fa-close", function(e){
+                    var dataItem = grid.dataItem($(this).closest("tr"));
+                    if(confirm("삭제 하시겠습니까?") == true){
+                        dataItem.matnr = '';
+                        matResult = '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="btn-blue"><i class="fa fa-search"></i></a>';
+                    }else{
+                        return
+                    }
+                });
+                $("#grid").on("mouseenter", "a.matnr", function(e){
+                    // 2018.11.08 품번 삭제 icon visible
+                    // icon = e.target.parentElement.lastChild.id;
+                    icon = this.parentElement.childNodes[1].id;
+                    $("#"+icon).show();
+                });
+                $("#grid").on("mouseout", "tr", function(e){
+                    if(typeof icon != 'undefined' || icon != ''){
+                        $("#"+icon).hide();
+                        $("#grid").on("mouseenter",".fa-close", function(e){
+                            $(this).show();
+                        })
+                    }
+                });
+            }
+
+            // 관리대상 checkbox
+            $("#grid").on("change", "input.checkAll", function(e){
+                var dataItem = grid.dataItem($(this).closest("tr"));
+                dataItem.zedit = 'X';
+
+                if($(this).is(":checked")){
+                    dataItem.mgtyn = 'Y';
+                }else{
+                    dataItem.mgtyn = 'N';
+                }
+                dataSource.fetch();
+            });
+
+            // 엑셀 업로드
+            $("#excelUploadBtn").click(function() {
+                $("#xlf").trigger('click');
+            });
+
+            // 저장
+            $("#saveBtn").click(function(){
+                reqApprove('');
+            })
+
+            // 엑셀 다운
+            $("#excelBtn").click(function() {
+                // 2018.11.12 IE 엑셀 다운로드 오류 수정
+<%--                 var data = new Array();
+                 for(var i = 0; i < grid.dataSource.data().length; i++){
+                     data.push(grid.dataSource.at(i));
+                 }
+                 setSheetData(data);
+                 var workbook = new kendo.ooxml.Workbook({
+                     sheets: [sheetData]
+                 });
+                 kendo.saveAs({
+                     dataURI: workbook.toDataURL(),
+                     fileName: "양산품번매칭.xlsx"
+                 });--%>
+
+                var xlsTpl = kendo.template($('#xlsTpl').html());
+                var excelData = grid.dataSource.data();
+                $.makeExcel(xlsTpl, excelData, excel_file_name);
+            });
+
+            // 통합검색
+            $("#srchBox").keyup(function(e){
+                if(e.keyCode == 13){
+                    initCreate('S');
+                }
+            });
+
+            // 조회
+            $("#searchBtn").click(function(){
+                initCreate('S');
+            });
+        }
+
+<%--        function setSheetData(data){
+            sheetData = {
+                columns: [
+                    { width: 80 },  //개발구분
+                    { width: 80 },  //지역
+                    { width: 80 },  //차종
+                    { width: 80 }  //제품군
+
+
+                ],
+                title: "Sheet1",
+                // Rows of the sheet
+                rows: [
+                    // First row (header)
+                    {
+                        cells: [
+                            { value: "개발구분", rowSpan: 2, bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "지역", rowSpan: 2, bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "차종", rowSpan: 2, bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "제품군", rowSpan: 2, bold: true, hAlign: "center", vAlign: "center" }
+
+                        ]
+                    },
+                    // Second row (header)
+                    {
+                        cells: [
+                            { value: "목표", bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "목표(현상)", bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "시작도", bold: true, hAlign: "center", vAlign: "center" },
+                            { value: "양산도", bold: true, hAlign: "center", vAlign: "center" }
+
+
+                        ]
+                    }
+                ]
+            };
+
+            for(var i = 0; i < data.length; i++){
+                var rowData = data[i];
+
+                var row = {};
+                var cells = [];
+
+                cells.push({value: rowData.dvdivtx, hAlign: "center", vAlign: "center"}); //개발구분
+                cells.push({value: rowData.lcdivtx, hAlign: "center", vAlign: "center"}); //지역
+                cells.push({value: rowData.pcrtp, hAlign: "center", vAlign: "center"}); //차종
+                cells.push({value: rowData.div03tx, hAlign: "center", vAlign: "center"}); //제품군
+
+
+
+                row.cells = cells;
+
+                sheetData.rows.push(row);
+            }
+        }--%>
+
+        function setGrid(type,data) {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 15,
+                data: data,
+                schema: {
+                    data: type == 'D' ? "CT_TAB" : "Sheet1",
+                    total: type == 'D' ? "CT_TAB.length" : "Sheet1.length",
+                    model: {
+                        fields: {
+                            // 2018.10.25 ERP품번 row select popup open 오류 수정
+                            mgtyn:      { editable: false }, //관리대상
+                            dvdivtx:    { editable: false }, //개발구분
+                            lcdivtx:    { editable: false }, //지역
+                            clinttx:    { editable: false }, //고객사
+                            pcrtp:      { editable: false }, //차종
+                            div03tx:    { editable: false }, //제품군
+                            sopmm:      { editable: false }, //SOP
+                            eopmm:      { editable: false }, //EOP
+                            ccrpt:      { editable: false }, //생산공장
+                            //목표수립
+                            pjtt0:      { editable: false }, //원가코드(품번)
+                            pjtt0_div:  { editable: false }, //제품
+                            pjtt0_usg:  { editable: false }, //USG
+                            pjtt0_opt:  { editable: false }, //옵션률
+                            //시작도
+                            pjtp1:      { editable: false }, //원가코드(품번)
+                            pjtp1_div:  { editable: false }, //제품
+                            pjtp1_usg:  { editable: false }, //USG
+                            pjtp1_opt:  { editable: false }, //옵션률
+                            //양산도
+                            pjtp2:      { editable: false }, //원가코드(품번)
+                            pjtp2_div:  { editable: false }, //제품
+                            pjtp2_usg:  { editable: false }, //USG
+                            pjtp2_opt:  { editable: false }, //옵션률
+                            //P2
+                            pjtp3:      { editable: false }, //원가코드(품번)
+                            pjtp3_div:  { editable: false }, //제품
+                            pjtp3_usg:  { editable: false }, //USG
+                            pjtp3_opt:  { editable: false }, //옵션률
+                            //양산
+                            pjtp4:      { editable: false }, //원가코드(품번)
+                            pjtp4_div:  { editable: false }, //제품
+                            pjtp4_usg:  { editable: false }, //USG
+                            pjtp4_opt:  { editable: false }, //옵션률
+                            //양산단계
+                            // matnr:      { editable: false }, //ERP품번
+                            // matnr_div:  { editable: false }, //제품
+                            matnr_usg:  { editable: false }, //USG
+                            matnr_opt:  { editable: false }, //옵션률
+                            // rmark:      { editable: false }, //변경사유
+                            //영업담당
+                            pl_sales:   { editable: false }, //PL
+                            pe_sales:   { editable: false }, //PE
+                            //구매담당
+                            pl_purchase:{ editable: false }, //PL
+                            pe_purchase:{ editable: false }, //PE
+                            aenam:      { editable: false }, //변경자
+                            aedat:      { editable: false }  //변경일
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height:620,
+                selectable:true,
+                scrollable:true,
+                sortable: true,
+                resizable: true,
+                navigatable: true,
+                pageable:true,
+                editable:true,
+                // change: function(e) {
+                //     var dataItem = grid.dataItem(grid.select());
+                //     dataItem.set('zedit', 'X');
+                // },
+                columns: [
+                    // locked : true인 상태에서는 template기능이 제한된다. 사용예시-> grid.lockedContent
+                    { field: "mgtyn", title: "관리<br>대상", width:45, template:"<input type='checkbox' id='chky' class='checkAll' #= mgtyn == \'Y\' ? \'checked\' : \'\' #/> ", /*editor:nonEditor,*/ locked:true,
+sortable:false },
+                    // { field: "pmscd", title: "pmscd", width: 100, locked: true},
+                    { field: "dvdivtx", title: "개발<br>구분", width:45, /*editor:nonEditor,*/ locked:true},
+                    { field: "lcdivtx", title: "지역", width:70, locked:true, /*editor:nonEditor,*/ attributes:{class:"st-left"} },
+                    { field: "clinttx", title: "고객사", width:60, locked:true, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                    { field: "cartp", title: "차종CODE", hidden:true},
+                    { field: "pcrtp", title: "차종", width:60, locked:true, /*editor:nonEditor,*/ attributes:{class:"st-left"} },
+                    { field: "div03tx", title: "제품군", width:80, /*editor:nonEditor,*/ attributes:{class:"st-left"}, locked:true },
+                    { title: "",locked:true, columns:[{title:"",width:0}]},// Height for header
+                    // { field: "crdsc", title: "차종설명", width:60, locked:true, attributes:{style:"text-align:left"}, editor:nonEditor},
+                    // { field: "sgmnt", title: "SEG", width:50, locked:true, editor:nonEditor },
+                    { field: "sopmm", title: "SOP", width:70, /*editor:nonEditor,*/ template: "#= sopmm == '' ? '' : kendo.toString(kendo.parseDate(sopmm, 'yyyyMM'), 'yyyy.MM') #" },
+                    { field: "eopmm", title: "EOP", width:70, /*editor:nonEditor,*/ template: "#= eopmm == '' ? '' : kendo.toString(kendo.parseDate(eopmm, 'yyyyMM'), 'yyyy.MM') #" },
+                    // { field: "div01tx", title: "대분류", width:60, locked:true, editor:nonEditor },
+                    // { field: "div02tx", title: "중분류", width:60, locked:true, editor:nonEditor },
+                    { field: "ccrpt", title: "생산<br>공장", width:60/*, editor:nonEditor*/ },
+                    { title: "목표수립", columns:[
+                        { field: "pjtt0", title: "원가코드(품번)", width:150, /*editor:nonEditor,*/
+                            template:function(e){
+                                var st = $("#srchBox").val()
+                                var result = e.pjtt0
+                                if( st != '' ){
+                                    result = e.pjtt0.replace(st,"<span style='color:red'>"+st+"</span>")
+                                    st = ''
+                                }
+                                return result
+                            }, attributes:{class:"st-left"}},
+                        { field: "pjtt0_div", title: "제품", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtt0_usg", title: "USG", width:50/*, editor:nonEditor*/, attributes:{class:"nr-right"}},
+                        { field: "pjtt0_opt", title: "옵션률", width:60, /*editor:nonEditor,*/ template: "#= pjtt0_opt == '' ? '' : pjtt0_opt+'%' #", attributes:{class: "nr-right"}}
+                    ]},
+
+                    { title: "시작도", columns:[
+                        { field: "pjtp1", title: "원가코드(품번)", width:150, /*editor:nonEditor,*/
+                            template:function(e){
+                                var st = $("#srchBox").val()
+                                var result = e.pjtp1
+                                if( st != '' ){
+                                    result = e.pjtp1.replace(st,"<span style='color:red'>"+st+"</span>")
+                                    st = ''
+                                }
+                                return result
+                            }, attributes:{class:"st-left"}},
+                        { field: "pjtp1_div", title: "제품", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp1_usg", title: "USG", width:60/*, editor:nonEditor*/, attributes:{class:"nr-right"}},
+                        { field: "pjtp1_opt", title: "옵션률", width:60, template: "#= pjtp1_opt == '' ? '' : pjtp1_opt+'%' #", /*editor:nonEditor,*/ attributes:{class:"nr-right"}}
+                    ]},
+                    { title: "양산도", columns:[
+                        { field: "pjtp2", title: "원가코드(품번)", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp2_div", title: "제품", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp2_usg", title: "USG", width:60/*, editor:nonEditor*/, attributes:{class:"nr-right"}},
+                        { field: "pjtp2_opt", title: "옵션률", width:60, /*editor:nonEditor,*/ template: "#= pjtp2_opt == '' ? '' : pjtp2_opt+'%' #", attributes:{class:"nr-right"}}
+                    ]},
+                    { title: "P2", columns:[
+                        { field: "pjtp3", title: "원가코드(품번)", width:150, /*editor:nonEditor,*/ attributes:{class:"nr-right"}},
+                        { field: "pjtp3_div", title: "제품", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp3_usg", title: "USG", width:50/*, editor:nonEditor*/, attributes:{class:"nr-right"}},
+                        { field: "pjtp3_opt", title: "옵션률", width:60, /*editor:nonEditor,*/ template: "#= pjtp3_opt == ''? '' : pjtp3_opt+'%' #", attributes:{class:"nr-right"}}
+                    ]},
+                    { title: "양산", columns:[
+                        { field: "pjtp4", title: "원가코드(품번)", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp4_div", title: "제품", width:150, /*editor:nonEditor,*/ attributes:{class:"st-left"}},
+                        { field: "pjtp4_usg", title: "USG", width:50/*, editor:nonEditor*/, attributes:{class:"nr-right"}},
+                        { field: "pjtp4_opt", title: "옵션률", width:60, /*editor:nonEditor,*/ template: "#= pjtp4_opt == '' ? '' : pjtp4_opt+'%' #", attributes:{class:"nr-right"}}
+                    ]},
+
+                        { title: "양산단계", columns:[
+                            { field: "matnr", title: "ERP품번", width:150,
+                                template: function(rowItem){
+                                    // 2018.10.25 ERP품번 필드 href style 추가
+                                    matResult = '';
+                                    if(rowItem.matnr) {
+                                        matResult += '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr">';
+                                        matResult += '<span style="color:blue; text-decoration:underline;">';
+                                        matResult += rowItem.matnr;
+                                        matResult += '</a>';
+                                        if(flag) matResult += '<i class="fa fa-close" style="display:none" class="icon" id="icon'+iCnt+'"></i>';
+                                        matResult += '</span>';
+                                    } else {
+                                        matResult += '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr">';
+                                        matResult += '<i class="fa fa-search"></i>';
+                                        matResult += '</a>';
+                                    }
+                                    // matResult = '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr"><i class="fa fa-search"></i></a>';
+                                    // if(rowItem.matnr != ''){
+                                    //     if(flag){
+                                    //         matResult = '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr">'+rowItem.matnr+"</a><i class='fa fa-close' style='display:none' id='icon"+iCnt+"'></i>";
+                                    //     }else{
+                                    //         matResult = '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr">'+rowItem.matnr+"</a>";
+                                    //     }
+
+                                    // }else{
+                                    //     matResult = '<a href="javascript:openSearchCodePopup(\'setPrtcd\')" class="matnr"><i class="fa fa-search"></i></a>'
+                                    // }
+                                    iCnt++;
+                                    return matResult
+                                }, editor:nonEditor},
+                            { field: "matnr_div", title: "제품", width:150, editor:nonEditor, attributes:{class:"st-left"}},
+                            { field: "werks", title: "ERP공장코드", width: 100, editor:nonEditor},
+                            { field: "name1", title: "ERP공장내역", width: 100, editor:nonEditor},
+                            { field: "matnr_usg", title: "USG", width:50/*, editor:nonEditor*/, attributes:{class:"nr-right"} },
+                            { field: "matnr_opt", title: "옵션률", width:60, /*editor:nonEditor,*/ template: "#= matnr_opt == '' ? '' : matnr_opt+'%' #", attributes:{class:"nr-right"}},
+                            { field: "rmark", title: "ERP품번 변경사유", width:150, editor:nonEditor, attributes:{class:"nr-left"}
+                                /*editable:function(rowItem){
+                                    return prtStatus
+                                }*/ },
+                            { field: "menge", title: "전월 판매수량", width: 95, attributes:{class:"nr-right"}, hidden:true}
+                        ]},
+                    // 2018.10.26 영업담당, 구매담당 필드 href style 추가
+                    { title: "영업담당", columns:[
+                        { field: "pl_sales", title: "PL", width:70,
+                            template: function(rowItem){
+                                var pmscode = rowItem.pmscd
+                                var result = '';
+
+                                if(rowItem.pl_sales) {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'1\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<span style="color:blue; text-decoration:underline;">';
+                                    result += rowItem.pl_sales;
+                                    result += '</span>';
+                                    result += '</a>';
+                                } else {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'1\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<i class="fa fa-search"></i>';
+                                    result += '</a>';
+                                }
+                                // var result = '<a href="javascript:managePopup('+pmscode+',\'1\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // if (rowItem.pl_sales != '') {
+                                //     result = rowItem.pl_sales+' <a href="javascript:managePopup('+pmscode+',\'1\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // }
+                                return result;
+                            }, editor:nonEditor},
+                        { field: "pe_sales", title: "PE", width:70,
+                            template: function(rowItem){
+                                var pmscode = rowItem.pmscd
+                                var result = '';
+
+                                if(rowItem.pe_sales) {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'1\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<span style="color:blue; text-decoration:underline;">';
+                                    result += rowItem.pe_sales;
+                                    result += '</span>';
+                                    result += '</a>';
+                                } else {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'1\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<i class="fa fa-search"></i>';
+                                    result += '</a>';
+                                }
+                                // var result = '<a href="javascript:managePopup('+pmscode+',\'1\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // if(rowItem.pe_sales != ''){
+                                //     result = rowItem.pe_sales+' <a href="javascript:managePopup('+pmscode+',\'1\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // }
+                                return result;
+                            }, editor:nonEditor}
+                    ]},
+
+                    { title: "구매담당", columns:[
+                        { field: "pl_purchase", title: "PL", width:70,
+                            template: function(rowItem){
+                                var pmscode = rowItem.pmscd
+                                var result = '';
+
+                                if(rowItem.pl_purchase) {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'2\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<span style="color:blue; text-decoration:underline;">';
+                                    result += rowItem.pl_purchase;
+                                    result += '</span>';
+                                    result += '</a>';
+                                } else {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'2\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<i class="fa fa-search"></i>';
+                                    result += '</a>';
+                                }
+                                // var result = '<a href="javascript:managePopup('+pmscode+',\'2\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // if(rowItem.pl_purchase != ''){
+                                //     result = rowItem.pl_purchase+' <a href="javascript:managePopup('+pmscode+',\'2\',\'pl\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // }
+                                return result;
+
+                            }, editor:nonEditor},
+                        { field: "pe_purchase", title: "PE", width:70,
+                            template: function(rowItem){
+                                var pmscode = rowItem.pmscd
+                                var result = '';
+
+                                if(rowItem.pe_purchase) {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'2\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<span style="color:blue; text-decoration:underline;">';
+                                    result += rowItem.pe_purchase
+                                    result += '</span>';
+                                    result += '</a>';
+                                } else {
+                                    result += '<a href="javascript:managePopup('+pmscode+',\'2\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup">';
+                                    result += '<i class="fa fa-search"></i>';
+                                    result += '</a>';
+                                }
+                                // var result = '<a href="javascript:managePopup('+pmscode+',\'2\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // if(rowItem.pe_purchase != ''){
+                                //     result = rowItem.pe_purchase+' <a href="javascript:managePopup('+pmscode+',\'2\',\'pe\',\'\')" class="btn-blue grid_ManagerPopup"><i class="fa fa-search"></i></a>';
+                                // }
+                                return result;
+                            }, editor:nonEditor}
+                    ]},
+                    { field: "aenam", title: "변경자", width:60, editor:nonEditor},
+                    { field: "aedat", title: "변경일", width:100, template: "#= aedat == '00000000' ? '' : kendo.toString(kendo.parseDate(aedat, 'yyyyMMdd'), 'yyyy.MM.dd') #", editor:nonEditor}
+                ],
+                dataBound:function(e){
+                    $("#grid").rowspan(1);
+                    $("#grid").rowspan(2);
+
+                    $(".k-grid-content-locked table").rowspan(3);
+                    $(".k-grid-content-locked table").rowspan(4);
+                    $(".k-grid-content-locked table").rowspan(5);
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                        if (grid.dataSource.total() == 0) {
+                            var colCount = grid.columns.length+15;
+                            $(e.sender.wrapper)
+                                .find('tbody')
+                                .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                        } else{
+                            // 그리드 멀티 선택
+                            grid.lockedContent.find("tr").css("cursor","pointer").bind("click", function() {
+                                $(this).find(".checkbox").trigger("click");
+                            });
+                            grid.lockedContent.find(".checkbox").bind("change", function (e) {
+                            }).bind("click", function(e) {
+                                e.stopPropagation();
+                            });
+                        }
+
+                        $(".checkAll").bind("click", function (e) {
+                            //alert(this.checked);
+                        });
+                }
+
+            }).data("kendoGrid");
+
+            // 2018.10.26 tooltip 제거
+            // grid.thead.find("tr").kendoTooltip({
+            //     filter: "th:eq(0),th:eq(4),th:eq(8),th:eq(12),th:eq(16),th:eq(20)",
+            //     position: "bottom",
+            //     content: function(e){
+            //         var target = $(e.target);
+            //         var content = target.text();
+            //         return content;
+            //     }
+            // }).data("kendoTooltip");
+            //
+            // $("#grid .k-grid-content table tr").kendoTooltip({
+            //     filter:"td:nth(1),td:nth(2),td:nth(5),td:nth(6),td:nth(9),td:nth(10),td:nth(13),td:nth(14),td:nth(17),td:nth(18),td:nth(30)",
+            //     position: "bottom",
+            //     content: function(e){
+            //         var target = $(e.target);
+            //         var content = target.text();
+            //         return content;
+            //     }
+            // }).data("kendoTooltip");
+            //
+            // grid.lockedContent.find("tr").kendoTooltip({
+            //     filter:"td:nth(5)",
+            //     position: "bottom",
+            //     content: function(e){
+            //         var target = $(e.target);
+            //         var content = target.text();
+            //         return content;
+            //     }
+            // }).data("kendoTooltip");
+        }
+        function nonEditor(container, options) {
+            container.text(options.model[options.field]);
+        }
+
+        function setPrtcd(data){
+            var dataItem = grid.dataItem(grid.table.find("#grid_active_cell").closest("tr"));
+            typeof dataItem.matnr == 'undefined' ? '' : dataItem.matnr;
+            var preMatnr = dataItem.matnr;
+            if(dataItem.matnr != '' && dataItem.matnr != data.matnr){
+                prtStatus = true;
+            }else{
+                prtStatus = false;
+            }
+            dataItem.set('matnr', data.matnr);
+            dataItem.set("matnr_div", data.maktx);
+            dataItem.set('werks', data.werks);
+            dataItem.set('name1', data.name1);
+            dataItem.set('rmark', data.rmark);
+            dataItem.set('zedit', 'X');     // 2018.12.04 data 변경 여부
+            // reqApprove('');
+        }
+
+        function funcCheckedAll(){
+            if(checkedVal == false ){
+                checkedVal = true
+            }else{
+                checkedVal = false
+            }
+
+            if(checkedVal){
+                grid.lockedContent.find(".checkbox").prop("checked", true);
+            }else{
+                grid.lockedContent.find(".checkbox").prop("checked", false);
+            }
+        }
+
+        function setManagerPopup(data){
+            var rowTr = grid.table.find("#grid_active_cell").closest("tr");
+            rowTr.find("button").remove();
+            var rowItem = grid.dataItem(rowTr);
+            rowItem.pl_sales = data.EV_ENAME;
+            grid.refresh();
+        }
+
+        function managePopup(pm,pr,fn,fg){
+            openSearchManagerPopup(pm,pr,fn,fg);
+        }
+
+        function reqApprove(type){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF212_03');
+            cfc.addDsParam('CT_LIST',grid.dataSource);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                // async: false,
+                success: function(data,type) {
+                    if(type != 'S'){
+                        alert(data.EV_MSG);
+                        // 2018.10.29 저장 성공 이후 reload
+                        $("#searchBtn").trigger("click");
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <div id="container">
+        <h2 class="h2-tit">양산품번 매칭</h2>
+        <div class="hd-sch">
+            <div class="dis-in txKeep">
+                <span class="tit-tx">관리대상</span>
+                <input type="text" id="CT_MGTYN" style="width: 140px" />
+                <span class="tit-tx">개발구분</span>
+                <input type="text" id="CT_DVDIV" style="width: 140px" />
+                <span class="tit-tx">지역</span>
+                <input type="text" id="CT_LCDIV" style="width: 120px" />
+                <span class="tit-tx">고객사</span>
+                <input type="text" id="CT_CLINT" style="width: 140px" />
+
+            </div>
+            <div class="dis-in txKeep">
+                <span class="tit-tx">차종</span>
+                <input type="text" id="CT_CARTP" style="width: 140px" />
+                <!-- <span class="tit-tx">대분류</span>
+                <input type="text" id="CT_DIV01" style="width: 90px" />
+                <span class="tit-tx">중분류</span>
+                <input type="text" id="CT_DIV02" style="width: 90px" /> -->
+                <span class="tit-tx">제품군</span>
+                <input type="text" id="CT_DIV03" style="width: 140px" />
+                <span class="tit-tx">생산공장</span>
+                <input type="text" id="CT_NATCD" style="width: 120px" />
+                <span class="tit-tx">통합검색</span>
+                <input type="text" class="input" id="srchBox" style="width: 140px" />
+            </div>
+            <div class="right">
+                <a id="searchBtn" class="btn btn-blue" ><i class="fa fa-search"></i> 조회</a>
+                <a id="excelBtn" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+                <!-- // 2018.11.12 엑셀 업로드 display none -->
+                <a id="excelUploadBtn" class="btn btn-blue" style="display: none;"><i class="fa fa-upload"></i> 엑셀 업로드</a>
+                <a id="saveBtn" class="btn btn-red"><i class="fa fa-floppy-o"></i> 저장</a>
+                <input type="file"   id="xlf" style="display: none;"/>
+            </div>
+        </div>
+
+
+        <div class="row-bx">
+            <div>
+                <!--<p style="font-size: 14px; font-weight: bold;">Total : <span id="gridCnt"></span></p>-->
+                <div id="grid"></div>      
+            </div>
+        </div>
+    </div><!-- /container -->
+<script>
+// 엑셀업로드처리
+// =============================================================================================================================================
+        var outFile="";
+        var rABS = typeof FileReader !== "undefined" && typeof FileReader.prototype !== "undefined" && typeof FileReader.prototype.readAsBinaryString !== "undefined";
+
+        function fixdata(data) {
+            var o = "", l = 0, w = 10240;
+            for(; l<data.byteLength/w; ++l) o+=String.fromCharCode.apply(null,new Uint8Array(data.slice(l*w,l*w+w)));
+            o+=String.fromCharCode.apply(null, new Uint8Array(data.slice(l*w)));
+            return o;
+        }
+
+        function to_json(workbook) {
+            var result = {};
+            var columns = [
+                "tskno",
+                "seqno",
+                "pmscd",
+
+                "dvdiv",        //개발구분cd
+                "lcdiv",        //지역구분cd
+                "clint",        //고객사cd
+                "cartp",        //차종cd
+
+                "div01",        //대분류cd
+                "div02",        //중분류cd
+                "div03",        //소분류cd
+
+                "mgtyn",        //관리구분
+
+                "dvdivtx",      //개발구분
+                "lcdivtx",      //지역구분
+                "clinttx",      //고객사
+
+                "pcrtp",        //차종
+                "crdsc",        //차종설명
+
+                "sgmnt",        //SEG
+                "sopmm",        //SOP
+                "eopmm",        //EOP
+
+                "div01tx",      //대분류
+                "div02tx",      //중분류
+                "div03tx",      //소분류
+                "ccrpt",        //생산공장
+
+                "pjtt0",        //목표수립 원가코드(품번)
+                "pjtt0_div",    //목표수립 제품
+                "pjtt0_usg",    //목표수립 usage
+                "pjtt0_opt",    //목표수립 옵션률
+
+                "pjtp1",        //시작도 원가코드(품번)
+                "pjtp1_div",    //시작도 제품
+                "pjtp1_usg",    //시작도 usage
+                "pjtp1_opt",    //시작도 옵션률
+
+                "pjtp2",        //양산도 원가코드(품번)
+                "pjtp2_div",    //양산도 제품
+                "pjtp2_usg",    //양산도 usage
+                "pjtp2_opt",    //양산도 옵션률
+
+                "pjtp3",        //P2 원가코드(품번)
+                "pjtp3_div",    //P2 제품
+                "pjtp3_usg",    //P2 usage
+                "pjtp3_opt",    //P2 옵션률
+
+                "pjtp4",        //SOP+3M 원가코드(품번)
+                "pjtp4_div",    //SOP+3M 제품
+                "pjtp4_usg",    //SOP+3M usage
+                "pjtp4_opt",    //SOP+3M 옵션률
+
+                "matnr",        //양산단계 원가코드(품번)
+                "matnr_div",    //양산단계 제품
+                "matnr_usg",    //양산단계 usage
+                "matnr_opt",    //양산단계 옵션률
+                "rmark",        //양산단계 변경사유
+
+                "pl_sales",     //구매 PL
+                "pe_sales",     //구매 PE
+                "pl_purchase",  //영업 PL
+                "pe_purchase",  //영업 PE
+                "aenam",        //변경자
+                "aedat"         //변경일자
+            ]
+            // Loop Over Each Sheet
+            workbook.SheetNames.forEach(function(sheetName) {
+                var roa = X.utils.sheet_to_json(workbook.Sheets[sheetName], {header:columns});
+                if(roa.length > 0){
+                    result[sheetName] = roa;
+                }
+            });
+            return result;
+        }
+
+        function process_wb(wb) {
+            outFile = to_json(wb);
+        }
+
+        var X = XLSX;
+        var xlf = document.getElementById('xlf');
+        function handleFile(e) {
+            var files = e.target.files;
+            var f = files[0];
+            {
+                var reader = new FileReader();
+                //var name = f.name;
+                reader.onload = function(e) {
+                    var data = e.target.result;
+                    var wb;
+
+                    if(rABS) {
+                        wb = X.read(data, {type: 'binary'});
+                    } else {
+                        var arr = fixdata(data);
+                        wb = X.read(btoa(arr), {type: 'base64'});
+                    }
+                    process_wb(wb);
+                    outFile.Sheet1.shift();
+                    if(outFile.Sheet1.length < 0){
+                        alert("다시 시도하세요.")
+                    }else{
+                        try{
+                            $("#grid").empty();
+                            setGrid('E',outFile);
+                        }catch (err){
+                            alert("암호화해제 후 다시 시도하세요.");
+                        }finally{
+                            grid.refresh();
+                        }
+
+                    }
+                };
+                if(rABS) reader.readAsBinaryString(f);
+                else reader.readAsArrayBuffer(f);
+            }
+        }
+
+        if(xlf.addEventListener) xlf.addEventListener('change', handleFile, false);
+// =============================================================================================================================================
+</script>
+<!-- // 엑셀다운로드처리 -->
+<!-- // ============================================================================================================================================= -->
+<script type="text/x-kendo-template" id="xlsTpl">
+    <table class="list_sub">
+    <thead>
+        <tr>
+            <th rowspan="2">TSKNO</th>
+            <th rowspan="2">SEQNO</th>
+            <th rowspan="2">PMSCD</th>
+
+            <th rowspan="2">개발구분 코드</th>
+            <th rowspan="2">지역구분 코드</th>
+            <th rowspan="2">고객사구분 코드</th>
+            <th rowspan="2">차종 코드</th>
+
+            <th rowspan="2">대분류 코드</th>
+            <th rowspan="2">중분류 코드</th>
+            <th rowspan="2">제품군 코드</th>
+
+            <th rowspan="2">관리구분</th>
+            <th rowspan="2">개발구분</th>
+            <th rowspan="2">지역</th>
+            <th rowspan="2">고객사</th>
+
+            <th rowspan="2">차종</th>
+            <th rowspan="2">차종설명</th>
+            <th rowspan="2">SEG</th>
+            <th rowspan="2">SOP</th>
+            <th rowspan="2">EOP</th>
+
+            <th rowspan="2">대분류</th>
+            <th rowspan="2">중분류</th>
+            <th rowspan="2">제품군</th>
+            <th rowspan="2">생산공장</th>
+
+            <th colspan="4">목표수립</th>
+            <th colspan="4">시작도</th>
+            <th colspan="4">양산도</th>
+            <th colspan="4">P2</th>
+            <th colspan="4">양산</th>
+            <th colspan="8">양산단계</th>
+
+            <th colspan="2">영업담당</th>
+            <th colspan="2">구매담당</th>
+
+            <th rowspan="2">변경자</th>
+            <th rowspan="2">변경일</th>
+        </tr>
+        <tr>
+            <th>원가코드(품번)</th>
+            <th>제품</th>
+            <th>USG</th>
+            <th>옵션률</th>
+
+            <th>원가코드(품번)</th>
+            <th>제품</th>
+            <th>USG</th>
+            <th>옵션률</th>
+
+            <th>원가코드(품번)</th>
+            <th>제품</th>
+            <th>USG</th>
+            <th>옵션률</th>
+
+            <th>원가코드(품번)</th>
+            <th>제품</th>
+            <th>USG</th>
+            <th>옵션률</th>
+
+            <th>원가코드(품번)</th>
+            <th>제품</th>
+            <th>USG</th>
+            <th>옵션률</th>
+
+            <th>ERP품번</th>
+            <th>제품</th>
+            <th>ERP공장코드</th>
+            <th>ERP공장내역</th>
+            <th>USG</th>
+            <th>옵션률</th>
+            <th>ERP품번 변경사유</th>
+            <th>전월판매수량</th>
+
+            <th>PL</th>
+            <th>PE</th>
+
+            <th>PL</th>
+            <th>PE</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+            <td style="text-align: center">#= rows[i].tskno #</td>
+            <td style="text-align: center">#= rows[i].seqno #</td>
+            <td style="text-align: center">#= rows[i].tskno #</td>
+
+            <td style="text-align: center">#= rows[i].dvdiv #</td>
+            <td style="text-align: center">#= rows[i].lcdiv #</td>
+            <td style="text-align: center">#= rows[i].clint #</td>
+            <td style="text-align: center">#= rows[i].cartp #</td>
+
+            <td style="text-align: center">#= rows[i].div01 #</td>
+            <td style="text-align: center">#= rows[i].div02 #</td>
+            <td style="text-align: center">#= rows[i].div03 #</td>
+
+            <td style="text-align: center">#= rows[i].mgtyn #</td>
+            <td style="text-align: center">#= rows[i].dvdivtx #</td>
+            <td style="text-align: center">#= rows[i].lcdivtx #</td>
+            <td style="text-align: center">#= rows[i].clinttx #</td>
+
+            <td style="text-align: center">#= rows[i].pcrtp #</td>
+            <td style="text-align: center">#= rows[i].crdsc #</td>
+
+            <td style="text-align: center">#= rows[i].sgmnt == '' ? '' : kendo.toString(kendo.parseDate(rows[i].sgmnt, 'yyyyMM'), 'yyyy.MM') #</td>
+            <td style="text-align: center">#= rows[i].sopmm == '' ? '' : kendo.toString(kendo.parseDate(rows[i].sopmm, 'yyyyMM'), 'yyyy.MM') #</td>
+            <td style="text-align: center">#= rows[i].eopmm == '' ? '' : kendo.toString(kendo.parseDate(rows[i].eopmm, 'yyyyMM'), 'yyyy.MM') #</td>
+
+            <td style="text-align: center">#= rows[i].div01tx #</td>
+            <td style="text-align: center">#= rows[i].div02tx #</td>
+            <td style="text-align: center">#= rows[i].div03tx #</td>
+            <td style="text-align: center">#= rows[i].ccrpt #</td>
+
+            <td style="text-align: left">#= rows[i].pjtt0 #</td>
+            <td style="text-align: left">#= rows[i].pjtt0_div #</td>
+            <td style="text-align: right">#= rows[i].pjtt0_usg #</td>
+            <td style="text-align: right">#= rows[i].pjtt0_opt == '' ? '' : rows[i].pjtt0_opt +"%" #</td>
+
+            <td style="text-align: left">#= rows[i].pjtp1 #</td>
+            <td style="text-align: left">#= rows[i].pjtp1_div #</td>
+            <td style="text-align: right">#= rows[i].pjtp1_usg #</td>
+            <td style="text-align: right">#= rows[i].pjtp1_opt == '' ? '' : rows[i].pjtp1_opt +"%" #</td>
+
+            <td style="text-align: left">#= rows[i].pjtp2 #</td>
+            <td style="text-align: left">#= rows[i].pjtp2_div #</td>
+            <td style="text-align: right">#= rows[i].pjtp2_usg #</td>
+            <td style="text-align: right">#= rows[i].pjtp2_opt == '' ? '' : rows[i].pjtp2_opt +"%" #</td>
+
+            <td style="text-align: left">#= rows[i].pjtp3 #</td>
+            <td style="text-align: left">#= rows[i].pjtp3_div #</td>
+            <td style="text-align: right">#= rows[i].pjtp3_usg #</td>
+            <td style="text-align: right">#= rows[i].pjtp3_opt == '' ? '' : rows[i].pjtp3_opt +"%" #</td>
+
+            <td style="text-align: left">#= rows[i].pjtp4 #</td>
+            <td style="text-align: left">#= rows[i].pjtp4_div #</td>
+            <td style="text-align: right">#= rows[i].pjtp4_usg #</td>
+            <td style="text-align: right">#= rows[i].pjtp4_opt == '' ? '' : rows[i].pjtp4_opt +"%" #</td>
+
+            <td style="text-align: left">#= rows[i].matnr #</td>
+            <td style="text-align: left">#= rows[i].matnr_div #</td>
+            <td style="text-align: left">#= rows[i].werks #</td>
+            <td style="text-align: left">#= rows[i].name1 #</td>
+            <td style="text-align: right">#= rows[i].matnr_usg #</td>
+            <td style="text-align: right">#= rows[i].matnr_opt == '' ? '' : rows[i].matnr_opt +"%" #</td>
+            <td style="text-align: left">#= rows[i].rmark #</td>
+            <td style="text-align: right">#= rows[i].menge #</td>
+
+            <td style="text-align: center">#= rows[i].pl_sales #</td>
+            <td style="text-align: center">#= rows[i].pe_sales #</td>
+
+            <td style="text-align: center">#= rows[i].pl_purchase #</td>
+            <td style="text-align: center">#= rows[i].pe_purchase #</td>
+
+            <td style="text-align: center">#= rows[i].aenam #</td>
+            <td style="text-align: center">#= rows[i].aedat == '' ? '' : kendo.toString(kendo.parseDate(rows[i].aedat, 'yyyyMM'), 'yyyy.MM') #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
+<!-- // ============================================================================================================================================= -->
+</body>
+<div id="list" style="display: none"></div>
+<iframe id="txtArea1" style="display: none"></iframe>
+</html>
