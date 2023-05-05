@@ -1,0 +1,374 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html lang="ko">
+<html>
+<head>
+    <title>근무관리시스템 M Plan</title>
+<%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        // var cymd = moment('<%=sy-datum(8)%>','YYYYMMDD');
+        var cymd;
+        var ivFinfg = '';
+        var ivHass = '';
+        var calendar;
+        $(document).ready(function() {
+            getYearEndInfo();
+            $("#sDt").val(cymd.format('YYYY'));
+            setSearchBox();
+            setForm();
+            initCreate('', $("#sDt").val());
+        });
+
+        function getYearEndInfo() {         /* 마감일 및 마감여부 체크 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PTS_GET_YEAR_ENDDT");
+            cfc.addParam('I_DATUM', '<%=sy-datum(8)%>', false);
+
+            data = callSyncData(cfc);
+            ivFinfg = data.E_FINFG;
+            cymd = (ivFinfg== 'X')? moment(data.E_FINDT, 'YYYYMMDD') : moment('<%=sy-datum(8)%>','YYYYMMDD');
+        }
+
+        function setSearchBox() {           /* 검색 세팅 */
+            $("#sDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy",
+                depth: "decade",
+                start: "decade"
+            });
+            $("#searchBtn").click(function() {
+                initCreate('', $("#sDt").val());
+            });
+        }
+
+        function setForm() {                    /* 달력 세팅 */
+            calendar = new Calendar($("#calendarDiv"));
+            calendar.setDate(cymd.format('YYYY'), '01', '01');
+            calendar.init();
+        }
+
+        function getDisplayData(type, yyyy) {  /* 헤더/일별 데이터 조회 function 호출 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PY_GET_DISPLAY_DATA");
+            cfc.addParam('IV_YEAR', yyyy, false);
+            return cfc.getData();
+        }
+
+        function initCreate(type, yyyy) {
+            // 초기화
+            $('#info_pyear').text(""); // 발생연차
+            $('#info_pmon').text("");  // 발생월차
+            $('#info_psum').text("");  // 발생연월차
+            $('#info_pquota').text("");// 발생보상휴가
+            $('#info_pcnt').text("");  // 계획연월차
+
+            $('#info_uyear').text(""); // 사용연차
+            $('#info_umon').text("");  // 사용월차
+            $('#info_usum').text("");  // 사용연월차
+            $('#info_uquota').text("");// 사용보상휴가
+
+            $('#info_ryear').text(""); // 잔여연차
+            $('#info_rmon').text("");  // 잔여월차
+            $('#info_rsum').text("");  // 잔여연월차
+            $('#info_rquota').text("");// 잔여보상휴가
+
+            if (type == "") {
+              param_obj = null; // 저장데이터 초기화
+            }
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data : getDisplayData(type, yyyy),
+                type: "POST",
+                success: function(data) {
+                if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+                setCreate(data, type);
+            },
+            error: function () {
+                alert("error");
+            },
+            beforeSend: function() {
+                kendo.ui.progress($("#container"), true);
+            },
+            complete: function() {
+                kendo.ui.progress($("#container"), false);
+            }
+          });
+        }
+
+        function setCreate(data, type) {
+            calendar.initDate();
+            calendar.setSchedule(data);
+        }
+    </script>
+</head>
+<body>
+    <section id="container">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>휴가/휴직</span>
+            <span>계획연월차</span>
+            <strong>조회</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>휴가/휴직</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>계획연월차 / 조회</h4>
+            <!-- //title -->
+
+            <!-- title -->
+            <h5>계획연월차 조회</h5>
+            <!-- //title -->
+
+            <!-- form -->
+            <div class="form_box">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="120"/>
+                        <col width="*"/>
+                        <col width="120"/>
+                        <col width="*"/>
+                        <col width="120"/>
+                        <col width="*"/>
+                        <col width="110"/>
+                        <col width="*"/>
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <th scope="row">조회연도</th>
+                            <td colspan="7"><input type="text" id="sDt" disabled="ture"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row">발생연차</th>
+                            <td><input type="text" class="w_datenum" id="info_pyear" disabled="true"></td>
+                            <th scope="row">사용연차</th>
+                            <td><input type="text" class="w_datenum" id="info_uyear" disabled="true"></td>
+                            <th scope="row">잔여연차</th>
+                            <td><input type="text" class="w_datenum" id="info_ryear" disabled="true"></td>
+                            <th scope="row">계획연월차</th>
+                            <td><input type="text" class="w_datenum" id="info_pcnt" disabled="true"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row">발생월차</th>
+                            <td><input type="text" class="w_datenum" id="info_pmon" disabled="true"></td>
+                            <th scope="row">사용월차</th>
+                            <td><input type="text" class="w_datenum" id="info_umon" disabled="true"></td>
+                            <th scope="row">잔여월차</th>
+                            <td colspan="3"><input type="text" class="w_datenum" id="info_rmon" disabled="true"></td>
+                        </tr>
+                        <tr class="bg_total">
+                            <th scope="row">발생연월차</th>
+                            <td><input type="text" class="w_datenum" id="info_psum" disabled="true"></td>
+                            <th scope="row">사용연월차</th>
+                            <td><input type="text" class="w_datenum" id="info_usum" disabled="true"></td>
+                            <th scope="row">잔여연월차</th>
+                            <td colspan="3"><input type="text" class="w_datenum" id="info_rsum" disabled="true"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row">발생보상휴가</th>
+                            <td><input type="text" class="w_datenum" id="info_pquota" disabled="true">
+                                <span style="vertical-align: middle;">&nbsp;H</span>
+                            </td>
+                            <th scope="row">사용보상휴가</th>
+                            <td><input type="text" class="w_datenum" id="info_uquota" disabled="true">
+                                <span style="vertical-align: middle;">&nbsp;H</span>
+                            </td>
+                            <th scope="row">잔여보상휴가</th>
+                            <td colspan="3"><input type="text" class="w_datenum" id="info_rquota" disabled="true">
+                                <span style="vertical-align: middle;">&nbsp;H</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- //form -->
+
+            <!-- dateCheck -->
+            <div class="restcalendar_box" id="restcalendarTable"></div>
+            <!-- //dateCheck -->
+
+          </article>
+          <!-- //contents -->
+    </section>
+    <script>
+    var Calendar = function(container) {    /* calendar 생성 */
+        var scheduleObject=new Array();
+        this.now_today = new Date();
+        this.year = this.now_today.getFullYear();
+        this.month = this.getNumberspace(this.now_today.getMonth() + 1);
+        this.day = this.now_today.getDate();
+        this.day_max = this.getDaymax(this.year, this.month-1);
+        this.container = container;
+    };
+    Calendar.prototype = {
+        init : function() {             /* calendar initialize */
+            this.container.html(this.mkCaption(this));
+        },
+        setDate : function(y,m,d) {     /* 날짜 세팅 */
+            this.year = y;
+            this.month = m;
+            this.day = d;
+        },
+        mkCaption : function(e) {       /* 화면 그리기 */
+            var owner = e;
+            var mkHtml = "";
+            // (row, col) = (월, 일)
+            var rowBeg = 0;
+            var rowEnd = 13;
+            var colBeg = 0;
+            var colEnd = 31;
+            var tagId;
+            var tagClass='cal_blank';
+            var iDayMax;  // 월에 포함되지 않는 일자(ex: 20180231)
+
+            for(var i=rowBeg; i<=rowEnd; i++) {
+                var strYear, strMon, strDay;
+                iDayMax = this.getDaymax(this.year, (i-1));
+                strYear= this.year;
+                strMon = ''+i;
+                if(strMon<10) strMon = '0' + strMon;
+                if(i==0) {              // table 범례
+                    mkHtml += '<table id="restcalendarTable" class="list_restcalendar">';
+                    mkHtml += '<thead>' ;
+                    mkHtml += '<ul class="rest_notes">';
+                    mkHtml += '<li class="rest_type01">연월차</li>';
+                    mkHtml += '<li class="rest_type02">반차</li>';
+                    mkHtml += '<li class="rest_type03">연월차(계획)</li>';
+                    mkHtml += '<li class="rest_type04">리프레쉬(계획)</li>';
+                    mkHtml += '<li class="rest_type05">보상휴가</li>';
+                    mkHtml += '</ul>';
+                }
+                mkHtml += '<tr>';
+                for(var j=colBeg; j<=colEnd; j++) {
+                    strDay = ''+(j+1);
+                    if(strDay<10) strDay = '0' + strDay;
+                    tagId = strYear + strMon + strDay;
+
+                    if(i==0) {          // table 상단 제목
+                        if(j==0)  mkHtml += '<th scope="col"></th>';
+                        if(j==31) mkHtml += '<th scope="col">계</th>';
+                        else mkHtml += '<th scope="col">'+(j+1)+'</th>';
+                    } else if(i==13) {  // table 하단 총계
+                        if(j==0)  mkHtml += '<th>총계</th>';
+                        if(j==31) mkHtml += '<th id='+tagId+'></th>';
+                        else mkHtml += '<th id='+tagId+'></th>';
+                    } else {            // table 내용
+                        if(j==0)  mkHtml += '<th>'+i+'월</th>';
+                        if(j==31) mkHtml += '<th id='+tagId+'></th>';
+                        else parseInt(strDay) > iDayMax ? mkHtml += '<td id='+tagId+' class='+tagClass+'></td>' : mkHtml += '<td id='+tagId+'></td>';
+                    }
+                }
+                mkHtml += '</tr>';
+                if(i==0) mkHtml += '</thead>'+'<tbody class="cal_week">';
+            }
+            mkHtml += '</tbody>';
+            mkHtml += '</table>';
+            $('#restcalendarTable').html(mkHtml);
+            return mkHtml;
+        },
+        getDaymax : function(years,months) {    /*  총 일수 계산 */
+            var i = 29, cday;
+            while(i<32){
+                cday = new Date(years,months,i);
+                if (cday.getFullYear()!=years || cday.getMonth()!=months) break;
+                i++;
+            }
+            return i-1;
+        },
+        getNumberspace : function(num) {        /* 날짜 format 변환 (ex: 1 -> 01) */
+            if (num<10) num = '0' + num;
+            return num;
+        },
+        initDate : function() {
+            this.mkCaption(this);
+        },
+        setSchedule : function(data) {          /* calendar에 날짜 data 등록 */
+            var owner=this;
+            var rs = data.ET_LIST;
+            for (var i = 0; i < rs.length; i++) {
+                var rsDate = moment(rs[i].datum,'YYYYMMDD');
+                var yymmdd = rsDate.format("YYYYMMDD");
+                var yymm = rsDate.format("YYYYMM");
+                var yy = rsDate.format("YYYY");
+                var $total = $('#'+yy+1332);    // 총계
+                var $sum = $('#'+yymm+32);      // 월별 합계
+                var $day = $('#'+yymmdd);       // 일별
+
+                // calendar 월별 개수 세팅
+                if(rs[i].dat == 32) {
+                  if(rs[i].mon == 13) $total.closest('th').text((Number(rs[i].cnt.trim()).toFixed(1)));
+                  else $sum.closest('th').text((Number(rs[i].cnt.trim()).toFixed(1)));
+                }
+
+                // calendar 배경색상 세팅
+                switch (rs[i].bgcolor) {
+                  case '#E6EAFF' : //휴일
+                        $day.closest('td').addClass("cal_holiday");
+                        break;
+                  case '#ffffcc' : //평일 오늘 이전
+                        $day.closest('td').addClass('cal_passday');
+                        break;
+                  case '#FFA7A7' : //오늘
+                        $day.closest('td').addClass('cal_today');
+                        break;
+                  case '#white' : //평일 오늘 이후
+                        $day.closest('td').addClass('');
+                        break;
+                  default   :
+                        break;
+                }
+
+                // calendar 아이콘 세팅
+                switch (rs[i].icon) {
+                  case 'ICON_OO_OBJECT' :       // 연차
+                        $day.closest('td').addClass("ico_rest_type01");
+                        break;
+                  case 'ICON_PPE_VNODE' :       // 반차
+                        $day.closest('td').addClass('ico_rest_type02');
+                        break;
+                  case 'ICON_OO_CLASS' :        // 연차_계획
+                        $day.closest('td').addClass('ico_rest_type03');
+                        break;
+                  case 'ICON_OO_CLASS_EVENT' :  // 리프레쉬_계획
+                        $day.closest('td').addClass('ico_rest_type04');
+                        break;
+                  case 'ICON_EXTRA' :           // 보상휴가
+                        $day.closest('td').addClass('ico_rest_type05');
+                        break;
+                  default   :
+                        break;
+                }
+            }
+
+            // 계획연월차 Header 데이터 호출
+            var rsInfo = data.ES_INFO;
+            $('#info_pyear').val((Number(rsInfo.pyear.trim()).toFixed(1)));     // 발생연차
+            $('#info_pmon').val((Number(rsInfo.pmon.trim()).toFixed(1)));       // 발생월차
+            $('#info_psum').val((Number(rsInfo.psum.trim()).toFixed(1)));       // 발생연월차
+            $('#info_pquota').val((Number(rsInfo.pquota.trim()).toFixed(2)));   // 발생보상휴가
+            $('#info_pcnt').val((Number(rsInfo.pcnt.trim()).toFixed(1)));       // 계획연월차
+
+            $('#info_uyear').val((Number(rsInfo.uyear.trim()).toFixed(1)));     // 사용연차
+            $('#info_umon').val((Number(rsInfo.umon.trim()).toFixed(1)));       // 사용월차
+            $('#info_usum').val((Number(rsInfo.usum.trim()).toFixed(1)));       // 사용연월차
+            $('#info_uquota').val((Number(rsInfo.uquota.trim()).toFixed(2)));   // 사용보상휴가
+
+            $('#info_ryear').val((Number(rsInfo.ryear.trim()).toFixed(1)));     // 잔여연차
+            $('#info_rmon').val((Number(rsInfo.rmon.trim()).toFixed(1)));       // 잔여월차
+            $('#info_rsum').val((Number(rsInfo.rsum.trim()).toFixed(1)));       // 잔여연월차
+            $('#info_rquota').val((Number(rsInfo.rquota.trim()).toFixed(2)));   // 잔여보상휴가
+        }
+    }
+    </script>
+</body>
+</html>
