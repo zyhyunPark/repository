@@ -1,0 +1,205 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>이격률 현황</title>
+     <%@include file="../z_msp_100/inc_menu.htm" %>
+           <script>var _param = {}; </script>
+            <div id="maintab" style="padding: 110px 10px 0px 10px;">
+                 <div id="tabstrip">
+                       <ul>
+                           <li class="k-state-active tabborder" >이격률 현황</li>
+                           <li class="tabborder">이격률 현황(단품별)</li>
+                        </ul>
+                        <div>
+                            <span class="tab1">&nbsp;</span>
+                            <%@include file="../z_msp_204/findChangeStatus_Tab1.htm" %>
+                       </div>
+                       <div>
+                            <span class="tab2">&nbsp;</span>
+                           <%@include file="../z_msp_204/findChangeStatus_Tab2.htm" %>
+                        </div>
+                  </div>
+             <style>
+                .k-grouping-row .k-group-cell {
+                    display: none;
+                }
+                /* even row background color 제거 */
+                .k-grid tr:nth-child(even){
+                    background-color:#FFFFFF;
+                }
+                /* 2018.10.31 탭 background color 변경 */
+                .k-tabstrip-items .k-item {
+                    background: #D5D5D5;
+                }
+                .k-tabstrip-items .k-state-default .k-link, .k-panelbar > li.k-state-default > .k-link {
+                    color: #FFFFFF;
+                }
+                .k-tabstrip-items .k-state-active .k-link {
+                    color: #333333;
+                }
+                .tab1, .tab2 {
+                    display: block;
+                    height: 0px;
+                }
+                .tabborder {
+                    border: 1px solid #cccccc !important;
+                }
+                .tabmain {
+                    text-align: left;
+                }
+                #tabstrip h2 {
+                    font-weight: lighter;
+                    line-height: 1;
+                }
+                #tabstrip h2 span {
+                    background: none;
+                    padding-left: 5px;
+                    vertical-align: top;
+                }
+                #tabstrip p {
+                    margin: 0;
+                    padding: 0;
+                }
+                .list_width {
+                  width: 80px;
+                }
+            </style>
+            <script>
+                var _arr = [];
+                var initData = '{"EV_SUBRC":"00", "CT_LIST":[]}';
+                var currDate = kendo.toString(new Date(), 'yyyy') +"."+ kendo.toString(new Date(), 'MM');
+
+                $().ready(function() {
+                    $("#tabstrip").kendoTabStrip({
+                        activate: onActivate,
+                        animation:  {
+                            open: {
+                                effects: "fadeIn"
+                            }
+                        }
+                    });
+
+                    function onActivate(e) {
+                             var idx = 0;
+                             var tab = $("#tabstrip").data("kendoTabStrip");
+                             if(tab) idx = tab.select().index();
+
+                             if(idx == 0) $.makeTab1(($.chkVal(idx, _arr)) ? 'X' : 'L');
+                             else if(idx == 1) $.makeTab2(($.chkVal(idx, _arr)) ? 'X' : 'L');
+
+                            _arr.push(idx);
+                    }
+
+                    $.chkVal = function(idx,arr) {
+                      var flag = false;
+                      for(var i=0; i<arr.length; i++) {
+                          if(arr[i] == idx) {
+                                flag = true;
+                                break;
+                          }
+                      }
+                      return flag;
+                    }
+
+                    $.makeExcel = function(_template, _excelData, _excelFile) {
+                      $("#list").html(_template({rows:_excelData}));
+                      var tab_text="";
+                      var tHtml = "";
+                      var textRange; var j=0;
+                      var eDiv = $("#list");
+
+
+                      eDiv.find("table").attr("border" , 1);
+                      tHtml = eDiv.html();
+                      eDiv.find("table").removeAttr("border");
+
+                      tab_text = tHtml;
+                      tab_text = tab_text.replace(/<a[^>]*>|<\/a>/g, "");//remove if u want links in your table
+                      tab_text = tab_text.replace(/<img[^>]*>/gi,""); // remove if u want images in your table
+                      tab_text = tab_text.replace(/<input[^>]*>|<\/input>/gi, ""); // reomves input params
+
+                      var ua = window.navigator.userAgent;
+                      var msie = ua.indexOf("MSIE ");
+
+                       if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./))      // If Internet Explorer
+                      {
+                            txtArea1.document.open("txt/html","replace");
+                            txtArea1.document.write(tab_text);
+                            txtArea1.document.close();
+                            txtArea1.focus();
+                            sa = txtArea1.document.execCommand("SaveAs", true, _excelFile+".xls");
+                            return (sa);
+                       }
+                       else {                //other browser not tested on IE 11
+                            var a = document.createElement('a');
+                            a.href = 'data:application/vnd.ms-excel,' + encodeURIComponent(tab_text);
+                            a.download = _excelFile+".xls";
+                            a.click();
+                            //e.preventDefault();
+                       }
+                  }
+
+                  $.fn.rowspan = function(colIdx, isStats) {
+                    return this.each(function(){
+                        var that;
+                        $('.k-grid-content-locked tr', this).each(function(row) {
+                            $('td',this).eq(colIdx).filter(':visible').each(function(col) {
+
+                                if ($(this).html() == $(that).html()
+                                    && (!isStats || isStats && $(this).prev().html() == $(that).prev().html())) {
+                                    rowspan = $(that).attr("rowspan") || 1;
+                                    rowspan = Number(rowspan)+1;
+
+                                    $(that).attr("rowspan",rowspan);
+
+                                    // do your action for the colspan cell here
+                                    $(this).hide();
+
+                                    //$(this).remove();
+                                    // do your action for the old cell here
+
+                                } else {
+                                    that = this;
+                                }
+
+                                // set the that if not already set
+                                that = (that == null) ? this : that;
+                            });
+                        });
+                    });
+                };
+            });
+
+            $.arrValue = function(str){
+                var _val = {};
+
+                var _maxVal = Math.max.apply(null, str);
+                if(_maxVal >= 0) _maxVal = _maxVal + 100;
+                else if(_maxVal < 0 ) _maxVal = _maxVal - 100;
+                _val.max = _maxVal;
+
+                var _minVal = Math.min.apply(null, str);
+                if(_minVal >= 0) _minVal = _minVal + 100;
+                else if(_minVal < 0 ) _minVal = _minVal - 100;
+                _val.min = _minVal;
+
+                //alert(JSON.stringify(_val));
+                return _val;
+            }
+
+            $.minValue = function(str) {
+              return Math.min.apply(null, str);
+            }
+
+            // 2018.11.06 dropdownlist adjust width automatically
+            function adjustDropDownWidth(e) {
+                var listContainer = e.sender.list.closest(".k-list-container");
+                listContainer.width(listContainer.width() + kendo.support.scrollbar());
+            }
+            </script>
+        </div>
+        <div id="list" style="display: none"></div>
+        <iframe id="txtArea1" style="display: none"></iframe>
+    </body>
+</html>
