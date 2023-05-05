@@ -1,0 +1,759 @@
+<%@page language="abap"%>
+<script src="../Z_ESS_021/js/BaseClass.js"></script>
+<script src="../Z_ESS_021/js/CreateClass.js"></script>
+<script src="../Z_ESS_021/js/moment.js"></script>
+<script>
+    var app;
+    var csInfo = '<%=CS_INFO%>';
+    var del_list = [];
+    var cymd = '<%=sy-datum(8)%>';
+    var ivFinfg, ivYear;
+
+    $(document).ready(function() {
+        csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+        //getYearEndInfo();
+
+        // pageCmd = C:휴일계획신청 / C1:평일실적신청 / C2:휴일실적신청 / RE:재상신 / U:수정 / CA:취소 / DS:삭제
+        // flag = P:휴일계획신청 / Z:평일실적신청 / A:휴일실적신청
+        app = new Create(
+            $.extend(
+                conf,
+                list_box,
+                {
+                    flag: '<%=FLAG%>',
+                    pageCmd: '<%=pageCmd%>',
+                    CS_INFO: csInfo,
+                    infty: '9309',
+                    ivHass: 'X'
+                }
+            )
+        );
+    });
+
+    var Create = CreateClass.extend({
+        init: function(config) {
+            CreateClass.fn.init.call(this, config);
+        },
+        initPage: function(data) {
+            this.rData = data;
+            $.extend(this.vData, data, this.config);
+
+            if (this.config.flag == 'P') {          // 휴일계획신청
+                this.vData.CS_INFO.zgubun = 'C';
+            } else if(this.config.flag == 'Z')  {   // 평일실적신청
+                this.vData.CS_INFO.zgubun = 'R';
+            } else if (this.config.flag == 'X' || this.config.flag == 'A') { // 재상신, 휴일실적신청
+                // 반려시
+                this.vData.CS_INFO.rdesc_hisid = this.vData.CS_INFO.rdesc;
+                this.vData.CS_INFO.rdesc = "";
+                // 과거결재번호
+                this.vData.CS_INFO.hisid = this.vData.CS_INFO.appid;
+                this.vData.CS_INFO.appid = "";
+
+                if (this.config.flag == 'A') { // 휴일실적신청
+                    this.vData.CS_INFO.reqty = 'R';
+                    this.vData.CS_INFO.zgubun = 'R';
+                    this.vData.CS_INFO.wkfst = 'Q';
+                }
+            }
+
+            var template = kendo.template($('#viewTemplate').html());
+            var result = template(this.vData);
+            // $(document.body).html(result);
+            $('#container').html(result);
+
+            this.initComponet(this.vData);
+            this.initEvent(this.vData);
+            this.loadData(this.vData);
+        },
+
+        getCallFuncParams: function(ac) {
+            var cfc = new CallFuncClass();
+            switch (ac) {
+                case this.GET_REQUEST  :
+                    cfc.setFuncName('Z_HR_SV_GET_REQUEST');
+                    cfc.addParam('IV_PERNR', '', false);
+                    cfc.addParam('IV_REGION', this.config.CS_INFO.region, false);
+                    cfc.addParam('IV_OFFICE', this.config.CS_INFO.office, false);
+                    cfc.addParam('IV_FLAG', this.config.flag, false);
+                    cfc.addParam('IV_HASS', this.config.ivHass, false);
+
+                    if (this.config.flag == 'P' || this.config.flag == 'Z') {  // 휴일계획신청, 평일실적신청 일 경우
+                        cfc.addParam('CS_INFO', '', false);
+                    } else {
+                        cfc.addParam('CS_INFO', this.config.CS_INFO, true);
+                    }
+                    break;
+
+
+                case this.APPROVE  :
+                    cfc.setFuncName('Z_HR_SV_APPROVE');
+
+                    var aFormValues = $('#approvalForm').serializeArray();
+                    cfc.addParam('IS_LIST', this.getFormData(aFormValues, this.rData.CS_INFO), true);
+
+                    if ($("#ET_LINE1").data("kendoGrid").dataSource.data().length == 0) {
+                        cfc.addParam('IT_LINE1', '', false);
+                    } else {
+                        cfc.addDsParam('IT_LINE1', $("#ET_LINE1").data("kendoGrid").dataSource);
+                    }
+                    if ($("#ET_LINE2").data("kendoGrid").dataSource.data().length == 0) {
+                        cfc.addParam('IT_LINE2', '', false);
+                    } else {
+                        cfc.addDsParam('IT_LINE2', $("#ET_LINE2").data("kendoGrid").dataSource);
+                    }
+
+                    cfc.addParam('IV_FLAG', this.config.flag, false);
+                    cfc.addDsParam('IT_PLIST', $("#grid").data("kendoGrid").dataSource);
+                    break;
+
+                case 'GET_TOTH'  :
+                    cfc.setFuncName('Z_HR_SV_SET_TOTH');
+                    //cfc.addDsParam('IT_PLIST', $("#grid").data("kendoGrid").dataSource, false);
+                    cfc.addParam('IT_PLIST', (grid.dataSource.data().length == 0 ? '' : grid.dataSource.data()), false);
+                    cfc.addParam('CS_INFO', '', false);
+                    break;
+
+                case 'GET_APPLINE'  :
+                    cfc.setFuncName("Z_HR_SV_GET_APPLINE");
+
+                    var aFormValues = $('#approvalForm').serializeArray();
+                    cfc.addParam('IS_LIST', this.getFormData(aFormValues, this.rData.CS_INFO), true);
+                    cfc.addParam('IV_FLAG', this.config.flag, false);
+                    cfc.addParam('IT_PLIST', (grid.dataSource.data().length == 0 ? '' : grid.dataSource.data()), false);
+                    break;
+
+                case 'CHECK_DATUM'  :
+                    cfc.setFuncName("Z_HR_SV_CHECK_DATUM");
+                    cfc.addParam('CS_INFO', {
+                        datum: $("#datum").val().replace(/\./g, ''),
+                        office: $("#ET_OFFICE").val(),
+                        reqdt: $("#reqdt").val().replace(/\./g, ''),
+                        appid: ''
+                    }, true);
+
+                    $("#datum").val("");
+                    break;
+
+                case 'SAVE'  :
+                    cfc.setFuncName('Z_HR_SV_SAVE');
+
+                    var aFormValues = $('#approvalForm').serializeArray();
+                    cfc.addParam('IS_LIST', this.getFormData(aFormValues, this.rData.CS_INFO), true);
+
+                    if ($("#ET_LINE1").data("kendoGrid").dataSource.data().length == 0) {
+                        cfc.addParam('IT_LINE1', '', false);
+                    } else {
+                        cfc.addDsParam('IT_LINE1', $("#ET_LINE1").data("kendoGrid").dataSource);
+                    }
+                    if ($("#ET_LINE2").data("kendoGrid").dataSource.data().length == 0) {
+                        cfc.addParam('IT_LINE2', '', false);
+                    } else {
+                        cfc.addDsParam('IT_LINE2', $("#ET_LINE2").data("kendoGrid").dataSource);
+                    }
+
+                    cfc.addParam('IV_FLAG', this.config.flag, false);
+
+                    /*
+                    for (var i = 0; i < del_list.length; i++) {
+                        $("#grid").data("kendoGrid").dataSource.add(del_list[i]);
+                    }
+                    cfc.addDsParam('IT_PLIST', $("#grid").data("kendoGrid").dataSource);
+                    */
+                    var ds_data = $("#grid").data("kendoGrid").dataSource.data();
+                    var param_plist = [];
+                    for (var i = 0; i < ds_data.length; i++) {
+                        param_plist.push(ds_data.at(i));
+                    }
+                    for (var i = 0; i < del_list.length; i++) {
+                        param_plist.push(del_list[i]);
+                    }
+                    cfc.addParam('IT_PLIST', param_plist);
+
+                    break;
+            }
+            return cfc.getData();
+        },
+        loadDataExt: function() {
+            if (this.config.flag == 'P') {          // 휴일계획신청 일 경우
+                $("#datum").attr("readonly", true);
+                //if (ivFinfg == 'X') {
+                //    $("#datum").data("kendoDatePicker").min(new Date(ivYear, 0, 1));
+                //} else {
+                //    $("#datum").data("kendoDatePicker").min(kendo.date.today());
+                //}
+                var dropdownlist = $('#ET_HFLAG').data('kendoDropDownList');
+                dropdownlist.select(1);
+                setGrid('');
+            } else if(this.config.flag == 'Z') {    // 평일실적신청 일 경우
+                $("#datum").attr("readonly", true);
+                var dropdownlist = $('#ET_HFLAG').data('kendoDropDownList');
+                dropdownlist.select(0);
+                setGrid('');
+            } else {
+                setGrid(this.rData.ET_PLIST);
+            }
+        },
+        initEventExt: function(me, data) {
+            // 날짜 선택 시 체크 (휴일계획신청, 평일실적신청 일 경우만) - 2019.02.12
+            // if(this.config.flag == 'P' || this.config.flag == 'Z') {
+            //     $("#datum").change(function(e) {
+            //         app.checkDatum(this.value);
+            //     });
+            // }
+            // 저장
+            $("#saveBtn").click(function() {
+                app.save();
+            });
+            // 라인추가
+            $("#addLineBtn").click(function() {
+                openLinePopup('C');
+            });
+            // 라인수정
+            $("#changeLineBtn").click(function() {
+                openLinePopup('U');
+            });
+            // 라인삭제
+            $("#deleteLineBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                    return;
+                }
+                // (신규 추가된 라인이 아닌) 기존 라인 삭제 시
+                if (dataItem.zstatu.trim() != null && dataItem.zstatu.trim() != "") {
+                    dataItem.dflag = 'X'; // 삭제여부
+                    del_list.push(dataItem);
+                }
+                grid.dataSource.remove(dataItem);
+                // 총시간 계산
+                app.setToth();
+            });
+            // 조회
+            $("#displayLineBtn").click(function() {
+                openLinePopup('D');
+            });
+            // 연장 일괄업로드
+            $("#multiLineBtn").click(function() {
+                openMultiLinePopup('C');
+            });
+        },
+
+        // 날짜 선택 시 체크
+        checkDatum: function(datum) {
+            this.callFunc.call(this, 'CHECK_DATUM', function(data) {
+                if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                    // 성공
+                    $("#datum").val(datum);
+                } else {
+                    alert(data.ES_RESULT.message);
+                    //$("#datum").val("");
+                }
+            });
+        },
+
+        // 총시간
+        setToth: function() {
+            this.callFunc.call(this, 'GET_TOTH', function(data) {
+                if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                    // 성공
+                    $("#EV_EVTTX").val(data.EV_EVTTX); // display용
+                    $("#evtt").val(data.EV_EVTT);
+                    $("#evttx").val(data.EV_EVTTX);
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+            });
+        },
+
+        // 결재라인
+        setAppLine: function() {
+            this.callFunc.call(this, 'GET_APPLINE', function(data) {
+                if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                    // 성공
+                    $("#ET_LINE1").data("kendoGrid").dataSource.data(data.ET_LINE1);
+                    $("#ET_LINE2").data("kendoGrid").dataSource.data(data.ET_LINE2);
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+            });
+        },
+
+        // 저장/승인요청 시 체크
+        checkValid: function() {
+            var data = $("#grid").data("kendoGrid").dataSource.data();
+            if (data.length == 0) {
+                alert("작업인원을 입력하세요.");
+                return false;
+            }
+
+            return true;
+        },
+
+        // 저장
+        save: function() {
+            if (!this.checkValid()) return;
+
+            this.callFunc.call(this, 'SAVE', function(data) {
+                if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                    // 성공
+                    sendForm("default.htm", {});
+                    alert("저장 되었습니다.");
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+            });
+        },
+
+        // 승인요청
+        reqApprove: function() {
+            if (!this.checkValid()) return;
+
+            this.callFunc.call(this, this.APPROVE, function(data) {
+                if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                    // 성공
+                    sendForm("default.htm", {});
+                    alert("승인요청 되었습니다.");
+                } else {
+                    alert(data.ES_RESULT.message);
+                }
+            });
+        }
+    });
+
+    // 파일
+    function setFile(data, fId) {
+        //app.setFile(data, fId);
+        $('#file'+fId).attr('href', data.EV_URI);
+        $('#file'+fId).html(data.EV_FNAME);
+        $('#file'+fId).css("visibility", "visible");
+        $('#delFile'+fId).css("visibility", "visible");
+        $('#obj0'+fId).val(data.EV_OBJID);
+        $('#fname'+fId).val(data.EV_FNAME);
+        $('#uri'+fId).val(data.EV_URI);
+    }
+
+    // function getYearEndInfo() {
+    //         var cfc = new CallFuncClass();
+    //         cfc.setFuncName("Z_HR_PTS_GET_YEAR_ENDDT");
+    //         cfc.addParam('I_DATUM',  cymd, false);
+    //         data = callSyncData(cfc);
+
+    //         ivYear = kendo.toString(kendo.parseDate(data.E_FINDT, "yyyyMMdd"),"yyyy");
+    //         ivFinfg = data.E_FINFG;
+    // }
+
+    // 인원 추가/수정/조회 팝업
+    function openLinePopup(flag) {
+        var csInfo_param;
+        var uid = '';
+
+        if (flag == 'U' || flag == 'D') { // 수정/조회
+            var dataItem = grid.dataItem(grid.select());
+            if (dataItem == null) {
+                alert("라인을 선택해 주시기 바랍니다.");
+                return;
+            } else {
+                csInfo_param = dataItem;
+                // \n 깨짐 방지
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\n/gi, "\\\n");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\n/gi, "\\\n");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\n/gi, "\\\n");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\n/gi, "\\\n");
+
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\r/gi, "");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\r/gi, "");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\r/gi, "");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\r/gi, "");
+
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\t/gi, " ");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\t/gi, " ");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\t/gi, " ");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\r/gi, "");
+
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\t/gi, " ");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\t/gi, " ");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\t/gi, " ");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\t/gi, " ");
+
+                uid = dataItem.uid;
+            }
+
+        } else if (flag == 'C') { // 라인추가
+            var datum = $("#datum").val();
+            if (datum == null || datum == "") {
+                alert("날짜를 입력하세요.");
+                $("#datum").focus();
+                return;
+            }
+
+            if ($("#ET_HFLAG").val() == null || $("#ET_HFLAG").val() == "") {
+                alert("구분을 선택하세요.");
+                return;
+            }
+
+            if ($("#ET_OFFICE").val() == null || $("#ET_OFFICE").val() == "") {
+                alert("팀을 선택하세요.");
+                return;
+            }
+
+            csInfo.datum = datum.replace(/\./g, '');
+            csInfo.hflag = $("#ET_HFLAG").val();
+            csInfo_param = csInfo;
+        }
+
+        // \n 깨짐 방지
+        var it_plist = grid.dataSource.data();
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\n/gi, "\\\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\n/gi, "\\\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\n/gi, "\\\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\n/gi, "\\\n");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\r/gi, "");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\r/gi, "");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\r/gi, "");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\r/gi, "");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\t/gi, " ");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\t/gi, " ");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\t/gi, " ");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\t/gi, " ");
+        }
+
+        sendFormPopup('../Z_HASS_513/pop.htm','popup', {
+                        'CS_INFO': kendo.stringify(csInfo_param),
+                        'LIST_BOX': kendo.stringify(list_box),
+                        'FLAG': flag,
+                        'IT_PLIST': it_plist.length == 0 ? '' : kendo.stringify(it_plist),
+                        'uid': uid
+                    }, 1100, 500);
+
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\\\n/gi, "\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\\\n/gi, "\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\\\n/gi, "\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\\\n/gi, "\n");
+        }
+    }
+
+    // 연장 일괄업로드
+    function openMultiLinePopup(flag) {
+        var csInfo_param;
+        var uid = '';
+        var datum = $("#datum").val();
+        if (datum == null || datum == "") {
+            alert("날짜를 입력하세요.");
+            $("#datum").focus();
+            return;
+        }
+        if ($("#ET_HFLAG").val() == null || $("#ET_HFLAG").val() == "") {
+            alert("구분을 선택하세요.");
+            return;
+        }
+        if ($("#ET_OFFICE").val() == null || $("#ET_OFFICE").val() == "") {
+            alert("팀을 선택하세요.");
+            return;
+        }
+        csInfo.datum = datum.replace(/\./g, '');
+        csInfo.hflag = $("#ET_HFLAG").val();
+        csInfo_param = csInfo;
+
+        // \n 깨짐 방지
+        var it_plist = grid.dataSource.data();
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\n/gi, "\\\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\n/gi, "\\\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\n/gi, "\\\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\n/gi, "\\\n");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\r/gi, "");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\r/gi, "");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\r/gi, "");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\r/gi, "");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\t/gi, " ");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\t/gi, " ");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\t/gi, " ");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\t/gi, " ");
+        }
+
+        sendFormPopup('../Z_HASS_513/multiLinePop.htm','popup', {
+                        'CS_INFO': kendo.stringify(csInfo_param),
+                        'LIST_BOX': kendo.stringify(list_box),
+                        'FLAG': flag,
+                        'IT_PLIST': it_plist.length == 0 ? '' : kendo.stringify(it_plist),
+                        'uid': uid
+                    }, 1100, 500);
+
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\\\n/gi, "\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\\\n/gi, "\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\\\n/gi, "\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\\\n/gi, "\n");
+        }
+    }
+
+    // 연장 일괄업로드
+    function openMultiLinePopup(flag) {
+        var csInfo_param;
+        var uid = '';
+        var datum = $("#datum").val();
+        if (datum == null || datum == "") {
+            alert("날짜를 입력하세요.");
+            $("#datum").focus();
+            return;
+        }
+        if ($("#ET_HFLAG").val() == null || $("#ET_HFLAG").val() == "") {
+            alert("구분을 선택하세요.");
+            return;
+        }
+        if ($("#ET_OFFICE").val() == null || $("#ET_OFFICE").val() == "") {
+            alert("팀을 선택하세요.");
+            return;
+        }
+        csInfo.datum = datum.replace(/\./g, '');
+        csInfo.hflag = $("#ET_HFLAG").val();
+        csInfo_param = csInfo;
+
+        // \n 깨짐 방지
+        var it_plist = grid.dataSource.data();
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\n/gi, "\\\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\n/gi, "\\\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\n/gi, "\\\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\n/gi, "\\\n");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\r/gi, "");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\r/gi, "");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\r/gi, "");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\r/gi, "");
+
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\t/gi, " ");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\t/gi, " ");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\t/gi, " ");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\t/gi, " ");
+        }
+
+        sendFormPopup('../Z_HASS_513/multiLinePop.htm','popup', {
+                        'CS_INFO': kendo.stringify(csInfo_param),
+                        'LIST_BOX': kendo.stringify(list_box),
+                        'FLAG': flag,
+                        'IT_PLIST': it_plist.length == 0 ? '' : kendo.stringify(it_plist),
+                        'uid': uid
+                    }, 1200, 800);
+
+        for (var i = 0; i < it_plist.length; i++) {
+            it_plist[i].zwork = it_plist[i].zwork.replace(/\\\n/gi, "\n");
+            it_plist[i].zgoal = it_plist[i].zgoal.replace(/\\\n/gi, "\n");
+            it_plist[i].zremark = it_plist[i].zremark.replace(/\\\n/gi, "\n");
+            it_plist[i].adesc = it_plist[i].adesc.replace(/\\\n/gi, "\n");
+        }
+    }
+</script>
+
+<section id="container">
+    <script type="text/x-kendo-template" id="viewTemplate">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>#= navi.lv1 #</span>
+            <strong>#= navi.lv2 #</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>#= navi.lv1 #</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>#= navi.lv2 #</h4>
+            <!-- //title -->
+
+            <!-- title -->
+            <h5>잔업/특근 신청</h5>
+            <!-- //title -->
+
+            <!-- button -->
+            <div class="btn_wrap">
+              <!-- 휴일계획신청, 평일실적신청, 휴일실적신청, 수정, 재상신 화면에서만 -->
+              # if (pageCmd == 'C' || pageCmd == 'C1' || pageCmd == 'C2' || pageCmd == 'U' || pageCmd == 'RE') { #
+                <button type="button" class="btn_basic_b" id="reqBtn">승인요청</button>
+              # } #
+
+              <!-- 휴일계획신청, 수정 화면에서만 저장(사용안함) -->
+              # if (pageCmd == 'C' || pageCmd == 'U') { #
+                <button type="button" class="btn_basic" id="saveBtn" style="display:none;">저장</button>
+              # } #
+
+                <button type="button" class="btn_basic" id="backBtn">이전화면</button>
+            </div>
+            <!-- //button -->
+
+            <!-- form -->
+            <div class="form_box">
+            <form id="approvalForm">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="17%"/>
+                        <col width="30%"/>
+                        <col width="17%"/>
+                        <col width="*"/>
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <th scope="row">신청일</th>
+                            <td colspan="3">
+                                <input type="text" class="k-textbox" id="reqdt" value="#= CS_INFO.reqdt == undefined || CS_INFO.reqdt == '00000000' ? kendo.toString(new Date(), 'yyyy.MM.dd') : kendo.toString(kendo.parseDate(CS_INFO.reqdt, 'yyyyMMdd'),
+                                'yyyy.MM.dd') #"
+                                readonly="readonly">
+                            </td>
+                        </tr>
+                        <tr>
+                            <!-- 휴일계획신청, 평일실적신청 화면만 잔업/특근일 선택 가능 -->
+                            <th scope="row">잔업/특근일 <span class="astro">*</span></th>
+                            <td>
+                                # if (pageCmd == 'C' || pageCmd == 'C1') { #
+                                <input type="text" id="datum" name="datum" class="datepicker" value="#= CS_INFO.datum == undefined || CS_INFO.datum == '00000000' ? '' : kendo.toString(kendo.parseDate(CS_INFO.datum, 'yyyyMMdd'), 'yyyy.MM.dd') #" />
+                                # } else { #
+                                <input type="text" id="datum" name="datum" class="k-textbox" value="#= CS_INFO.datum == undefined || CS_INFO.datum == '00000000' ? '' : kendo.toString(kendo.parseDate(CS_INFO.datum, 'yyyyMMdd'), 'yyyy.MM.dd') #"
+                                readonly="readonly" />
+                                # } #
+                            </td>
+                            <!-- 휴일계획신청 화면만 구분 선택 가능 -->
+                            <th scope="row">구분</th>
+                            <td>
+                                <input id="ET_HFLAG" name="hflag" value="#= CS_INFO.hflag #" class="w_50per dropdownlist #=pageCmd=='C' ? '' :'disabled'#" #=pageCmd=="C" ? "" :"disabled"# />
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">사업소</th>
+                            <td>
+<%--                                <input class="w_50per disabled dropdownlist" disabled value="#= CS_INFO.region #" id="ET_REGION" name="region" />--%>
+                                <input type="hidden" value="#= CS_INFO.region #" id="ET_REGION" name="region" />
+                                <input type="text" class="w_50per k-textbox" value="#= CS_INFO.regiontx #" readonly="readonly" />
+                            </td>
+                            <th scope="row">팀</th>
+                            <td>
+<%--                                <input class="w_50per disabled dropdownlist" disabled value="#= CS_INFO.office #" id="ET_OFFICE" name="office" />--%>
+                                <input type="hidden" value="#= CS_INFO.office #" id="ET_OFFICE" name="office" />
+                                <input type="text" class="w_50per k-textbox" value="#= CS_INFO.officetx #" readonly="readonly" />
+                            </td>
+                        </tr>
+                        # if (CS_INFO.rdesc_hisid != null && CS_INFO.rdesc_hisid != '') { #
+                        <tr>
+                            <th scope="row">반려사유</th>
+                            <td colspan="3">
+                                <input type="text" class="all" value="#=CS_INFO.rdesc_hisid#" disabled>
+                            </td>
+                        </tr>
+                        #}#
+                        <tr>
+                            <th scope="row">총시간</th>
+                            <td colspan="3">
+                                <input type="text" class="k-textbox" value="#= CS_INFO.evttx == undefined ? '' : CS_INFO.evttx #" id="EV_EVTTX" readonly="readonly">
+                                <input type="hidden" value="#= CS_INFO.evtt == undefined ? '' : CS_INFO.evtt #" id="evtt" name="evtt">
+                                <input type="hidden" value="#= CS_INFO.evttx == undefined ? '' : CS_INFO.evttx #" id="evttx" name="evttx">
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tbody>
+                        #
+                        if (FILE_LIST.length > 0) {
+                        #
+                        <tr id="file_area">
+                            <th>파일첨부</th>
+                            <td id="file_box" class="file_box" colspan="3">
+                                <table>
+                                    <colgroup>
+                                        <col width='10%'/>
+                                        <col width='10%'/>
+                                        <col width='*'/>
+                                    </colgroup>
+                                    #
+                                    for (var i = 0; i < FILE_LIST.length; i++) {
+                                    var id = FILE_LIST[i].id;
+                                    var findFileId = 'findFile' + id;
+                                    var delFileId = 'delFile' + id;
+
+                                    var fileId = 'file' + id;
+                                    var objoId = 'obj0' + id;
+                                    var fnameId = 'fname' + id;
+                                    var uriId = 'uri' + id;
+
+                                    var visibility = 'visibility: hidden';
+                                    if (CS_INFO[uriId] != '' && CS_INFO[uriId] != undefined) {
+                                        visibility = 'visibility: visible';
+                                    }
+                                    #
+                                    <tr>
+                                        <th>#= FILE_LIST[i].name #</th>
+                                         <!-- 휴일계획신청, 평일실적신청, 휴일실적신청, 수정, 재상신 화면에서만 -->
+                                          # if (pageCmd == 'C' || pageCmd == 'C1' || pageCmd == 'C2' || pageCmd == 'U' || pageCmd == 'RE') { #
+                                              <td class="file_wrap">
+                                                  <input type="button" id="#= findFileId #" for="#= id #" class="file_btn" value="파일찾기">
+                                              </td>
+                                              <td>
+                                                  <a href="#= CS_INFO[uriId] == '' ? '\\#' : CS_INFO[uriId] #" id="#= fileId #" style="#= visibility #" target="_blank">#= CS_INFO[fnameId] #</a>
+                                                  <button type="button" id="#= delFileId #" for="#= id #" class="ico_delete" style="#= visibility #">삭제</button>
+                                                  <input type="hidden" id="#= objoId #" name="#= objoId #" value="#= CS_INFO[objoId] #" />
+                                                  <input type="hidden" id="#= fnameId #" name="#= fnameId #" value="#= CS_INFO[fnameId] #" />
+                                                  <input type="hidden" id="#= uriId #" name="#= uriId #" value="#= CS_INFO[uriId] #" />
+                                              </td>
+                                          # } else { #
+                                               <td id="attach#=id#" colspan="2"></td>
+                                          # } #
+                                    </tr>
+                                    #}#
+                                </table>
+                            </td>
+                        </tr>
+                        #}#
+                    </tbody>
+                </table>
+            </form>
+            </div>
+            <!-- //form -->
+
+            <!-- button -->
+            <div class="btn_wrap_l">
+            <!-- 휴일계획신청, 평일실적신청, 휴일실적신청, 수정, 재상신 화면에서만 -->
+            # if (pageCmd == 'C' || pageCmd == 'C1' || pageCmd == 'C2' || pageCmd == 'U' || pageCmd == 'RE') { #
+                <button type="button" class="btn_basic plus" id="addLineBtn">라인추가</button>
+                <button type="button" class="btn_basic minus" id="deleteLineBtn">라인삭제</button>
+                <button type="button" class="btn_basic" id="changeLineBtn">수정</button>
+            # } #
+                <button type="button" class="btn_basic" id="displayLineBtn">조회</button>
+            <!-- 휴일계획신청, 평일실적신청, 휴일실적신청, 수정, 재상신 화면에서만 -->
+            # if (pageCmd == 'C' || pageCmd == 'C1' || pageCmd == 'C2' || pageCmd == 'U' || pageCmd == 'RE') { #
+                <button type="button" class="btn_basic_b" id="multiLineBtn">연장 일괄업로드</button>
+            # } #
+            </div>
+            <!-- //button -->
+
+            <!-- list -->
+            <div id="grid"></div>
+            <!-- /list -->
+
+            <!-- title -->
+            <h5>결재라인</h5>
+            <!-- //title -->
+
+            <!-- approve -->
+            <div class="approve_box">
+                <div class="tb_box">
+                    <h6>신청부서</h6>
+                    <div id="ET_LINE1" class="mb_15"></div>
+                </div>
+
+                <div class="tb_box">
+                    <h6>담당부서</h6>
+                    <div id="ET_LINE2" class="mb_15"></div>
+                </div>
+            </div>
+            <!-- //approve -->
+
+        </article>
+        <!-- //contents -->
+
+    </script>
+</section>
