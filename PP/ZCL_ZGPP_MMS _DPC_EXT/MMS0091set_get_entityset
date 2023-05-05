@@ -1,0 +1,318 @@
+METHOD mms0091set_get_entityset.
+
+     DATA : lt_search TYPE zptsc080t,
+            lr_code   TYPE RANGE OF zcm_code1,
+            ls_code   LIKE LINE  OF lr_code,
+            ls_entity LIKE LINE  OF et_entityset,
+            lv_mode   TYPE char1,
+            lv_gubun  TYPE char1,
+            lv_pono   TYPE aufnr,
+            lv_veran  TYPE veran,
+            lv_code1  TYPE char1,
+            lv_code2  TYPE char1.
+
+     DATA : lt_info1  TYPE TABLE OF zpps5690,
+            lt_info2  TYPE TABLE OF zpps5690,
+            lt_info3  TYPE TABLE OF zpps5691,
+            lt_info4  TYPE TABLE OF zpps5693,
+            lt_info5  TYPE TABLE OF zpps9005,
+            lt_info6  TYPE TABLE OF zpps9005,
+            lt_info7  TYPE TABLE OF zpps9005,
+            lt_info8  TYPE TABLE OF zpps5696,
+            lt_info9  TYPE TABLE OF zpps9005,
+            lt_info10 TYPE TABLE OF zpps5694,
+            ls_result TYPE zpps9001.
+
+     DATA : BEGIN OF lt_data,
+              info1  LIKE lt_info1,
+              info2  LIKE lt_info2,
+              info3  LIKE lt_info3,
+              info4  LIKE lt_info4,
+              info5  LIKE lt_info5,
+              info6  LIKE lt_info6,
+              info7  LIKE lt_info7,
+              info8  LIKE lt_info8,
+              info9  LIKE lt_info9,
+              info10 LIKE lt_info10,
+              result LIKE ls_result,
+            END OF lt_data.
+*"----------------------------------------------------------------------
+*" 1.JSON -> ABAP
+*"----------------------------------------------------------------------
+    READ TABLE it_filter_select_options ASSIGNING FIELD-SYMBOL(<fs_filter>) WITH KEY property = 'key'.
+     IF sy-subrc = 0 .
+       READ TABLE <fs_filter>-select_options ASSIGNING FIELD-SYMBOL(<fs_select_option>) INDEX 1.
+       CHECK sy-subrc = 0.
+       zclpt_util=>json_to_data( EXPORTING input = <fs_select_option>-low IMPORTING output = lt_search ).
+     ENDIF.
+*"----------------------------------------------------------------------
+*" 2.Search Filter
+*"----------------------------------------------------------------------
+    LOOP AT lt_search ASSIGNING FIELD-SYMBOL(<fs_search>).
+       CASE <fs_search>-dptid.
+         WHEN 'mode'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_mode>) INDEX 1.
+           CHECK <fs_mode> IS ASSIGNED.
+           lv_mode = <fs_mode>-low.
+
+         WHEN 'po_no'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_pono>) INDEX 1.
+           CHECK <fs_pono> IS ASSIGNED.
+           lv_pono = <fs_pono>-low.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+             EXPORTING
+               input  = lv_pono
+             IMPORTING
+               output = lv_pono.
+
+         WHEN 'veran'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_veran>) INDEX 1.
+           CHECK <fs_veran> IS ASSIGNED.
+           lv_veran = <fs_veran>-low.
+
+         WHEN 'gubun'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_gubun>) INDEX 1.
+           CHECK <fs_gubun> IS ASSIGNED.
+           lv_gubun = <fs_gubun>-low.
+
+         WHEN 'code'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_code>) INDEX 1.
+           CHECK <fs_code> IS ASSIGNED.
+           MOVE-CORRESPONDING <fs_code> TO ls_code.
+           APPEND ls_code TO lr_code.
+
+         WHEN 'code1'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_code1>) INDEX 1.
+           CHECK <fs_code1> IS ASSIGNED.
+           lv_code1 = <fs_code1>-low.
+
+         WHEN 'code2'.
+           READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_code2>) INDEX 1.
+           CHECK <fs_code2> IS ASSIGNED.
+           lv_code2 = <fs_code2>-low.
+
+       ENDCASE.
+     ENDLOOP.
+*"----------------------------------------------------------------------
+*" 3.Read Data
+*" -IV_MODE (1:작업팀, 2:작업자, 3:설비, 4:불량, 5:공정이상/생산대기/부가작업,
+*"           6:생산 오더 공정,   7:생산오더/품번/WBS)
+*" -IS_CODE (작업팀일 경우 M:가공, A:조립, T:성능검사, Z:전체)
+*"          (설비일 경우 작업장 코드)
+*" -IV_GUBUN(불량일 경우 M:가공, A:조립, T:성능검사)
+*"          (공정이상/생산대기/부가작업 경우 O:공정이상, W:생산대기, B:부가작업)
+*" -IV_PONO (생산 오더 공정일 경우 생산오더)
+*"----------------------------------------------------------------------
+    CASE lv_mode.
+       WHEN '1'.
+         CLEAR lt_info5.
+         CALL FUNCTION 'ZPP_MMS_CODE_VALUE'
+           EXPORTING
+             i_gb    = 'C'
+             i_class = 'PP701'
+             i_code  = 'S'
+           TABLES
+             lt_data = lt_info5.
+
+         IF ls_code-low EQ 'M'.
+           DELETE lt_info5 WHERE code(1) <> 'M'.
+         ELSEIF ls_code-low EQ 'A'.
+           DELETE lt_info5 WHERE code(1) <> 'A'.
+         ELSEIF ls_code-low EQ 'T'.
+           DELETE lt_info5 WHERE code(1) <> 'T'.
+         ENDIF.
+
+         lt_data-info5[] = lt_info5[].
+
+
+       WHEN '2'.
+         CLEAR lt_info6.
+         " 작업자 전체 조회, 부서원 조회 로직 분기 2019.08.14
+         IF lv_veran IS INITIAL.
+           SELECT personid AS code, name_ko  AS codenm
+             INTO CORRESPONDING FIELDS OF TABLE @lt_info6
+             FROM zcmcv1010.
+*          SELECT a~personid AS code, a~name_ko  AS codenm, a~originorgunitid,
+*                 b~zcmf4_ch, b~zcm_code2, b~zcm_code3, b~zcm_code4
+*            INTO CORRESPONDING FIELDS OF TABLE @lt_info6
+*            FROM zcmcv1010 AS a LEFT JOIN zcmt0011 AS b
+*                                       ON a~originorgunitid = b~zcmf3_ch
+*           WHERE a~personid IN @lr_code
+*             AND b~zmodule = 'PP'
+*             AND b~zclass  = 'PP701'.
+
+           SORT lt_info6 BY code.
+           DELETE ADJACENT DUPLICATES FROM lt_info6 COMPARING code.
+           lt_data-info6[] = lt_info6[].
+
+
+         ELSE.
+           SELECT a~personid AS code, a~name_ko  AS codenm, a~originorgunitid,
+                  b~zcmf4_ch, b~zcm_code2, b~zcm_code3, b~zcm_code4
+             INTO CORRESPONDING FIELDS OF TABLE @lt_info10
+             FROM zcmcv1010 AS a LEFT JOIN zcmt0011 AS b
+                                        ON a~originorgunitid = b~zcmf3_ch
+            WHERE b~zcm_code2 = @lv_veran
+              AND b~zmodule   = 'PP'
+              AND b~zclass    = 'PP701'.
+
+           SORT lt_info10 BY code.
+           DELETE ADJACENT DUPLICATES FROM lt_info10 COMPARING code.
+           lt_data-info10[] = lt_info10[].
+         ENDIF.
+
+
+       WHEN '3'.
+         CLEAR lt_info5.
+         SELECT zcm_code3 AS code,zcmf6_ch AS codenm
+           INTO TABLE @lt_info5
+           FROM zcmt0011
+          WHERE zmodule   = 'PP'
+            AND zclass    = 'PP702'
+            AND zcm_code1 = 'S'
+            AND zcm_code2 IN @lr_code
+       ORDER BY zsort_key.
+
+         IF sy-subrc <> 0.
+           APPEND ls_code-low TO lt_info5. "설비 code 없을 경우 Work Center code
+         ENDIF.
+
+         lt_data-info5[] = lt_info5[].
+
+
+       WHEN '4'.
+         SELECT qpcd~katalogart, qpcd~codegruppe, qpgt~kurztext, qpcd~code,
+                qpct~kurztext AS codenm
+           FROM qpcd AS qpcd INNER JOIN qpgt AS qpgt
+                                     ON qpcd~katalogart = qpgt~katalogart
+                                    AND qpcd~codegruppe = qpgt~codegruppe
+                             INNER JOIN qpct AS qpct
+                                     ON qpcd~katalogart = qpct~katalogart
+                                    AND qpcd~codegruppe = qpct~codegruppe
+                                    AND qpcd~code = qpct~code
+          WHERE qpcd~katalogart = '9'
+            AND qpgt~sprache    = '3'
+       ORDER BY qpcd~code
+           INTO TABLE @lt_info4.
+
+         IF sy-subrc = 0.
+           IF lv_gubun = 'M'.
+             DELETE lt_info4 WHERE codegruppe(3) <> 'MDA'.
+           ELSEIF lv_gubun = 'A'.
+             DELETE lt_info4 WHERE codegruppe(3) <> 'MDC'.
+           ELSEIF lv_gubun = 'T'.
+             DELETE lt_info4 WHERE codegruppe(3) <> 'MDF'.
+           ENDIF.
+
+           lt_data-info4[] = lt_info4[].
+         ENDIF.
+
+
+       WHEN '5' OR '6'.
+         CALL FUNCTION 'ZPP_MMS_RFC_07'
+           EXPORTING
+             iv_mode  = lv_mode
+             iv_gubun = lv_gubun
+             iv_pono  = lv_pono
+             iv_veran = lv_veran
+             iv_code1 = lv_code1
+             iv_code2 = lv_code2
+           TABLES
+             et_info1 = lt_info1
+             et_info2 = lt_info2
+             et_info3 = lt_info3.
+
+         IF sy-subrc = 0.
+           FIELD-SYMBOLS : <fs_info3> TYPE zpps5691.
+           LOOP AT lt_info3 ASSIGNING <fs_info3>.
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info3>-po_no
+               IMPORTING
+                 output = <fs_info3>-po_no.
+
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info3>-vornr
+               IMPORTING
+                 output = <fs_info3>-vornr.
+
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info3>-matnr
+               IMPORTING
+                 output = <fs_info3>-matnr.
+           ENDLOOP.
+
+           lt_data-info1[] = lt_info1[].
+           lt_data-info2[] = lt_info2[].
+           lt_data-info3[] = lt_info3[].
+         ENDIF.
+
+       WHEN '7'.
+         SELECT DISTINCT po_no AS code
+           INTO CORRESPONDING FIELDS OF TABLE @lt_info7
+           FROM zppt5601
+          ORDER BY po_no.
+
+         IF sy-subrc = 0.
+           FIELD-SYMBOLS : <fs_info7> TYPE zpps9005.
+           LOOP AT lt_info7 ASSIGNING <fs_info7>.
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info7>-code
+               IMPORTING
+                 output = <fs_info7>-code.
+           ENDLOOP.
+
+           lt_data-info7[] = lt_info7[].
+         ENDIF.
+
+         SELECT DISTINCT matnr AS code, zzkr_item_name AS codenm
+           INTO CORRESPONDING FIELDS OF TABLE @lt_info8
+           FROM zppt5601
+          ORDER BY matnr.
+
+         IF sy-subrc = 0.
+           FIELD-SYMBOLS : <fs_info8> TYPE zpps5696.
+           LOOP AT lt_info8 ASSIGNING <fs_info8>.
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info8>-code
+               IMPORTING
+                 output = <fs_info8>-code.
+           ENDLOOP.
+
+           lt_data-info8[] = lt_info8[].
+         ENDIF.
+
+         SELECT DISTINCT pspnr AS code
+           INTO CORRESPONDING FIELDS OF TABLE @lt_info9
+           FROM zppt5601
+          ORDER BY pspnr.
+
+         IF sy-subrc = 0.
+           FIELD-SYMBOLS : <fs_info9> TYPE zpps9005.
+           LOOP AT lt_info9 ASSIGNING <fs_info9>.
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_info9>-code
+               IMPORTING
+                 output = <fs_info9>-code.
+           ENDLOOP.
+
+           lt_data-info9[] = lt_info9[].
+         ENDIF.
+
+     ENDCASE.
+*"----------------------------------------------------------------------
+*" 4.ABAP -> JSON
+*"----------------------------------------------------------------------
+    ls_entity-value = cl_fdt_json_serializer=>serialize(
+       data          = lt_data                "#EC CI_FLDEXT_OK[2215424]
+       compress      = abap_true
+       pretty_name   = cl_fdt_json_serializer=>pretty_mode-low_case ).
+     APPEND ls_entity TO et_entityset.
+
+   ENDMETHOD.
