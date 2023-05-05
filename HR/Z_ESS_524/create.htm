@@ -1,0 +1,621 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근무관리시스템 M Plan</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/BaseClass.js"></script>
+    <script src="../Z_ESS_021/js/CreateClass.js"></script>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var csInfo = '<%=CS_INFO%>';
+        var pageCmd = '<%=FLAG%>';
+        var ivHass = '';
+        var ivDisyn = '';
+        var pernr = '';
+        var dataSource, gET_LINE1, gET_LINE2;
+        var cymd = moment('<%=sy-datum(8)%>','YYYYMMDD');
+
+        $(document).ready(function() {
+            csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+            setForm();
+            initCreate('');
+        });
+
+        function setForm() {
+            var minDate = new Date(cymd);
+
+            $("#reqdt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+            $("#begda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd",
+                change: function() {
+                    var begDate = $("#begda").val();
+                    var endDate = $("#endda").val();
+
+                    if (begDate) {
+                        $("#endda").data("kendoDatePicker").min(begDate);
+                    } else if (endDate) {
+                        $("#begda").data("kendoDatePicker").max(endDate);
+                    } else {
+                        $("#begda").data("kendoDatePicker").max(endDate);
+                        $("#endda").data("kendoDatePicker").min(begDate);
+                    }
+                },
+                min: minDate  // 신청일 이후부터 searchBox 표시
+            });
+            $("#endda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd",
+                change: function() {
+                    var endDate = $("#endda").val();
+                    var begDate = $("#begda").val();
+
+                    if (endDate) {
+                        $("#begda").data("kendoDatePicker").max(endDate);
+                    } else if (begDate) {
+                        $("#endda").data("kendoDatePicker").min(begDate);
+                    } else {
+                        endDate = new Date();
+                        $("#begda").data("kendoDatePicker").max(endDate);
+                        $("#endda").data("kendoDatePicker").min(begDate);
+                    }
+
+                    if($("#begda").val() && $("#endda").val() && $("#absty").val() && $("#awart").val()) {
+                        $("#awart").data("kendoDropDownList").value(csInfo.awart);
+                        $("#awart").data("kendoDropDownList").trigger("change");
+                    }
+                },
+                min: minDate  // 신청일 이후부터 searchBox 표시
+            });
+
+            // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            $("#begda, #endda").attr("readonly", true);
+
+            // 신청일 날짜 세팅
+            $("#reqdt").val(cymd.format('YYYY')+"."+cymd.format('MM')+"."+cymd.format('DD'), 'yyyy.MM.dd');
+
+            // dropdown 세팅
+            $("#absty").kendoDropDownList({
+                dataTextField: "value",
+                dataValueField: "key",
+                change: function() {
+                    if(this.value()) {      // 휴무구분 선택 후 휴무유형 활성화 & selectbox data read
+                        csInfo = dataSource;
+                        csInfo.abstyt = this.text();
+                        var cfc = new CallFuncClass();
+                        cfc.setFuncName("Z_HR_PL_GET_LISTBOX_ABSGP");
+                        cfc.addParam("IV_ABSTY", $("#absty").val(), false);
+                        cfc.addParam("IV_PERNR", pernr, false);
+                        cfc.addParam("IV_BEGDA", $("#begda").val().replace(/\./g, ''), false);
+                        cfc.addParam("IV_ENDDA", $("#endda").val().replace(/\./g, ''), false);
+
+                        $.ajax({
+                            url: URL.callFunction,
+                            dataType: "jsonp",
+                            jsonp : "callback",
+                            data: cfc.getData(),
+                            type: "POST",
+                            success: function(data) {
+                                $("#awart").data("kendoDropDownList").enable(true);
+                                $("#awart").data("kendoDropDownList").setDataSource(data.ET_AWART);
+
+                                ivDisyn = data.EV_DISYN;
+                                if(ivDisyn == 'N' ) {      // 휴무구분 '1'(연월차)일 경우 신청이력조회 비활성화
+                                    $("#historyBtn").hide();
+                                    $(".disyn_y").show();
+                                    $('.disyn_n').attr('colspan', 1);
+                                } else {
+                                    $(".disyn_y").hide();
+                                    $('.disyn_n').attr('colspan', 5);
+                                }
+                                if (ivDisyn == 'C'){
+                                    $("#total_t").text('총가능시간');
+                                    $("#holi_t").text('사용시간');
+                                    $("#rest_t").text('잔여시간');
+                                } else {
+                                    $("#total_t").text('총가능일수');
+                                    $("#holi_t").text('사용일수');
+                                    $("#rest_t").text('잔여일수');
+                                }
+
+                                // 재상신일 경우 휴무구분&휴무유형 신청 value selected
+                                if(pageCmd == 'X') {
+                                    $("#awart").data("kendoDropDownList").value(csInfo.awart);
+                                    $("#awart").data("kendoDropDownList").trigger("change");
+                                }
+                            },
+                            error: function () {
+                                alert("error");
+                            },
+                            beforeSend: function() {
+                                kendo.ui.progress($("#container"), true);
+                            },
+                            complete: function() {
+                                kendo.ui.progress($("#container"), false);
+                            }
+                        });
+                    } else {            // 휴무구분 선택 전 휴무유형 비활성화
+                        $("#awart").data("kendoDropDownList").enable(false);
+                        $("#historyBtn").hide();
+                        $(".disyn_y").hide();
+                        $('.disyn_n').attr('colspan', 5);
+                    }
+                }
+            });
+
+            $("#awart").kendoDropDownList({
+                dataTextField: "value",
+                dataValueField: "key",
+                change: function() {
+                    if(this.value()) {
+                        // 2018.10.19 연월차 유형 중 총가능일수, 휴무일수, 잔여일수 visible 여부
+                        var cfc = new CallFuncClass();
+                        cfc.setFuncName("Z_HR_PL_CHECK_ABSTY");
+                        cfc.addParam("IV_AWART", $("#awart").val(), false);
+
+                        $.ajax({
+                            url: URL.callFunction,
+                            dataType: "jsonp",
+                            jsonp : "callback",
+                            data: cfc.getData(),
+                            type: "POST",
+                            success: function(data) {
+                                ivDisyn = data.EV_DISYN;
+                                if(ivDisyn == 'N' || ivDisyn == 'C') {
+                                    $("#historyBtn").hide();
+                                    $(".disyn_y").show();
+                                    $('.disyn_n').attr('colspan', 1);
+                                } else {
+                                    $("#historyBtn").show();
+                                    $(".disyn_y").hide();
+                                    $('.disyn_n').attr('colspan', 5);
+                                }
+
+                                if (ivDisyn == 'C'){
+                                    $("#total_t").text('총가능시간');
+                                    $("#holi_t").text('사용시간');
+                                    $("#rest_t").text('잔여시간');
+                                } else {
+                                    $("#total_t").text('총가능일수');
+                                    $("#holi_t").text('사용일수');
+                                    $("#rest_t").text('잔여일수');
+                                }
+                            },
+                            error: function () {
+                                alert("error");
+                            },
+                            beforeSend: function() {
+                                kendo.ui.progress($("#container"), true);
+                            },
+                            complete: function() {
+                                kendo.ui.progress($("#container"), false);
+                            }
+                        });
+
+                        // 2018.10.19 연월차 유형 중 총가능일수, 휴무일수, 잔여일수 visible 여부
+                        csInfo.awartt = this.text();
+                    }
+                    csInfo.reqdt = $("#reqdt").val().replace(/\./g, '');
+                    csInfo.begda = $("#begda").val().replace(/\./g, '');
+                    csInfo.endda = $("#endda").val().replace(/\./g, '');
+                    csInfo.absty = $("#absty").val();
+                    csInfo.awart = $("#awart").val();
+
+                    var param;
+                    var cfc = new CallFuncClass();
+                    cfc.setFuncName("Z_HR_PL_GET_REQUEST");
+                    cfc.addParam('IV_STDDT', cymd.format('YYYYMMDD'), false);
+                    cfc.addParam('IV_PERNR', pernr, false);
+                    cfc.addParam('IV_HASS', ivHass, false);     // '' : ESS     / 'X': HASS
+                    cfc.addParam('IV_FLAG', pageCmd, false);    // '': 계획신청  / 'X': 재상신
+                    cfc.addParam("CS_INFO", csInfo, true);
+                    param = cfc.getData();
+
+                    $.ajax({
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: param,
+                        type: "POST",
+                        success: function(data) {
+                            if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                                dataSource = data.CS_INFO;
+                            } else {
+                                alert(data.ES_RESULT.message);
+                            }
+                            dataSource = data.CS_INFO;
+                            $("#ztotal").val(data.CS_INFO.ztotal.trim());  // 총가능일수
+                            $("#zholi").val(data.CS_INFO.zholi.trim());    // 휴무일수
+                            $("#zrest").val(data.CS_INFO.zrest.trim());    // 잔여일수
+                        },
+                        error: function () {
+                            alert("server error");
+                        },
+                        beforeSend: function() {
+                            kendo.ui.progress($("#container"), true);
+                        },
+                        complete: function() {
+                            kendo.ui.progress($("#container"), false);
+                        }
+                    });
+                }
+            });
+
+            // 휴무기간 선택 전 휴무구분 selectbox 비활성화
+            if(!$("#begda").val() && !$("#endda").val()) {
+                $("#absty").data("kendoDropDownList").enable(false);
+                $("#historyBtn").hide();
+                $(".disyn_y").hide();
+                $('.disyn_n').attr('colspan', 5);
+            }
+
+            // 휴무구분 선택 전 휴무유형 selectbox 비활성화
+            if(!$("#absty").val()) {
+                $("#awart").data("kendoDropDownList").enable(false);
+                $("#historyBtn").hide();
+                $(".disyn_y").hide();
+                $('.disyn_n').attr('colspan', 5);
+            }
+
+            // 휴무기간 선택 후 휴무구분 활성화 & selectbox data read  & 휴가신청 가능 여부 check
+            $("#begda, #endda").change(function(e) {
+                if($("#begda").val() && $("#endda").val()) {
+                    setDropDownList();
+                }
+            });
+        }
+
+        function setDropDownList() {
+            $("#absty").data("kendoDropDownList").enable(true);
+            var param;
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_GET_LISTBOX");
+            cfc.addParam("IV_ABSTY", ' ', false);
+            cfc.addParam("IV_PERNR", pernr, false);
+            cfc.addParam("IV_BEGDA", $("#begda").val().replace(/\./g, ''), false);
+            cfc.addParam("IV_ENDDA", $("#endda").val().replace(/\./g, ''), false);
+            cfc.addParam("IV_DATUM", cymd.format('YYYYMMDD'), false);
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: param,
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    $("#absty").data("kendoDropDownList").setDataSource(data.ET_ABSTY);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function setButton() {
+            // 신청이력조회
+            $("#historyBtn").click(getHistory).show();
+            $("#historyBtn").hide();
+            // 승인요청
+            $("#reqBtn").click(reqApprove).show();
+            // 이전화면
+            $("#backBtn").click(function() {
+                history.back();
+            });
+        }
+
+        function setData(data) {
+            dataSource = data.CS_INFO;
+            gET_LINE1 = data.ET_LINE1;
+            //gET_LINE2 = data.ET_LINE2;
+            gET_LINE2 = data.ET_LINE2.concat(data.ET_LINE2_P);
+
+            // 신청일
+            if(pageCmd != 'X') {
+                $("#reqdt").val(cymd.format('YYYY')+"."+cymd.format('MM')+"."+cymd.format('DD'), 'yyyy.MM.dd');
+            } else {
+                $("#reqdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            }
+
+            // 휴무기간
+            $("#begda").val(kendo.toString(kendo.parseDate(data.CS_INFO.begda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $("#endda").val(kendo.toString(kendo.parseDate(data.CS_INFO.endda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+
+            // 재상신일 경우 휴무구분&휴무유형 신청 value selected
+            if(pageCmd == 'X') {
+                setDropDownList();
+                $("#absty").data("kendoDropDownList").value(data.CS_INFO.absty);
+                $("#absty").data("kendoDropDownList").trigger("change");
+            }
+            // 총가능일수
+            $("#ztotal").val(data.CS_INFO.ztotal.trim());
+            // 휴무일수
+            $("#zholi").val(data.CS_INFO.zholi.trim());
+            // 잔여일수
+            $("#zrest").val(data.CS_INFO.zrest.trim());
+            // 반려 사유
+            if (data.CS_INFO.wkfst == 'R') {
+                $("#wkfst").val(data.CS_INFO.wkfst);
+                $("#wkfstt").val(data.CS_INFO.wkfstt);
+                $("#rdesc").val(data.CS_INFO.rdesc_hisid);
+                $('.rejectReason').show();
+            }
+            // 신청부서
+            setApprovalLine("ET_LINE1", data.ET_LINE1);
+            // 담당부서
+            setApprovalLine("ET_LINE2", data.ET_LINE2);
+        }
+
+        function initCreate(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData(type),
+                type: "POST",
+                async: false,
+                success: setCreate,
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getCreateData(type) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_GET_REQUEST");
+            cfc.addParam('IV_STDDT', cymd.format('YYYYMMDD'), false);
+            cfc.addParam('IV_PERNR', pernr, false);
+            cfc.addParam('IV_HASS', ivHass, false);     // '' : ESS    / 'X': HASS
+            cfc.addParam('IV_FLAG', pageCmd, false);    // '': 계획신청 / 'X': 재상신
+
+            if(pageCmd != 'X') {    // 신규작성 -> 신청
+                cfc.addParam('CS_INFO', {appid:''}, true);
+            } else {                // 신청 -> 재신청
+                cfc.addParam('CS_INFO', csInfo, true);
+            }
+
+            return cfc.getData();
+        }
+
+        function setCreate(data) {
+            if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "" || data.ES_RESULT.subrc == "4") {
+                if (data.ES_RESULT.subrc == "4") {
+                    alert(data.ES_RESULT.message.replace(/\\\\n/g, '\\n'));
+                }
+                setData(data);
+                setButton();
+
+                gET_LINE1 = data.ET_LINE1;
+                gET_LINE2 = data.ET_LINE2;
+                setApprovalLine("lineGrid1", data.ET_LINE1); // 신청부서
+                setApprovalLine("lineGrid2", data.ET_LINE2); // 담당부서
+            } else {
+                alert(data.ES_RESULT.message);
+            }
+        }
+
+        function getHistory() {
+            sendFormPopup(
+                'popup_history.htm',
+                'popupReg',
+                {'IV_PERNR': csInfo.pernr, 'IV_AWART': $("#awart").val()},
+                450, 550
+            );
+        }
+
+        function reqApprove(){
+            // value 유효성 검사
+            var isList = dataSource;
+            if($("#reqdt").val() == "") {
+                alert('신청일을 선택해 주시기 바랍니다.');
+                $("#reqdt").focus();
+                return;
+            } else {
+                isList.reqdt = $("#reqdt").val().replace(/\./g, '');
+            }
+
+            if($("#begda").val() == "") {
+                alert('휴무 시작일을 선택해 주시기 바랍니다.');
+                $("#begda").focus();
+                return;
+            } else {
+                isList.begda = $("#begda").val().replace(/\./g, '');
+            }
+
+            if($("#endda").val() == "") {
+                alert('휴무 종료일을 선택해 주시기 바랍니다.');
+                $("#endda").focus();
+                return;
+            } else {
+                isList.endda = $("#endda").val().replace(/\./g, '');
+            }
+
+            if(!$("#absty").val()) {
+                alert('휴무유형을 선택해 주시기 바랍니다.');
+                $("#absty").focus();
+                return;
+            } else {
+                isList.absty = $("#absty").val().replace(/\./g, '');
+            }
+
+            if(!$("#awart").val()) {
+                alert('휴무유형을 선택해 주시기 바랍니다.');
+                $("#awart").focus();
+                return;
+            } else {
+                isList.awart = $("#awart").val().replace(/\./g, '');
+            }
+
+            // 승인요청
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_APPROVE");
+            cfc.addParam('IV_FLAG', pageCmd, false);
+            cfc.addParam('IV_PERNR', pernr, false);
+            cfc.addParam('CS_INFO', isList, true);
+            cfc.addParam('IT_LINE1', gET_LINE1, true);
+            if (gET_LINE2[0] != undefined) {
+                cfc.addParam('IT_LINE2', gET_LINE2, true);
+            } else {
+                cfc.addParam('IT_LINE2', '', false);
+            }
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        alert("승인 요청 되었습니다.");
+                        sendForm("default.htm", {});
+                    } else if (data.ES_RESULT.subrc != "" && data.ES_RESULT.subrc != "0") {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+<section id="container">
+    <div class="location">
+        <span class="home">Home</span>
+        <span>휴가/휴직</span>
+        <span>휴가</span>
+        <strong>신청</strong>
+    </div>
+    <!-- contents -->
+    <article id="contents">
+        <!-- title -->
+        <h3>휴가/휴직</h3>
+        <!-- //title -->
+
+        <!-- title -->
+        <h4>휴가 / 신청</h4>
+        <!-- //title -->
+        <p class="list_tlt" style="color: red;" >※ 휴가신청 승인시 계획에  반영됩니다. 휴가실적 확정을 위해서는 사후 "근무실적 등록"에서 반드시 등록하시기 바랍니다.</p>
+        <!-- title -->
+        <h5>휴가 신청</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" id="reqBtn" class="btn_basic_b">승인요청</button>
+            <button type="button" id="backBtn" class="btn_basic">이전화면</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <div id="form_box" class="form_box">
+            <form id="approvalForm">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="10%"/>
+                        <col width="36%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                    </colgroup>
+                    <tr>
+                        <th>신청일 <span class="astro">*</span></th>
+                        <td colspan="7">
+                            <input id="reqdt" name="reqdt" type="text" disabled="ture" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴무기간 <span class="astro">*</span></th>
+                        <td colspan="7">
+                            <input id="begda" name="begda" type="text" class="datepicker" maxlength="10"/>
+                            ~
+                            <input id="endda" name="endda" type="text" class="datepicker" maxlength="10"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>휴무유형 <span class="astro">*</span></th>
+                        <td>
+                            <select id="absty" style="width: 95px;"></select>
+                            <select id="awart"></select>
+                            <button type="button" id="historyBtn" class="btn_basic_g" style="display:none; width: 100px; padding: 0;">신청이력조회</button>
+                        </td>
+                        <th scope="row" id = "total_t" class="disyn_y" style="display: none;">총가능일수</th>
+                        <td class="disyn_y" style="display: none;">
+                            <input id="ztotal" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                        <th scope="row" id="holi_t">휴무일수</th>
+                        <td class ="disyn_n" colspan="5">
+                            <input id="zholi" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                        <th scope="row" id="rest_t"  class="disyn_y" style="display: none;">잔여일수</th>
+                        <td class="disyn_y" style="display: none;">
+                            <input id="zrest" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        <!-- //form -->
+
+        <h5 class="rejectReason" style="display: none;">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none;">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" id="rdesc" class="k-textbox" readonly="readonly" style="width: 100%" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5 id="approve_area">결재라인</h5>
+        <!-- //title -->
+        <!-- approve -->  
+        <div class="approve_box">
+            <div class="tb_box">
+                <!-- title -->
+                <h6>신청부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE1" class="mb_15"></div>
+            </div>
+            <div class="tb_box">
+                <!-- title -->
+                <h6>담당부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE2" class="mb_15"></div>
+            </div>
+        </div>
+        <!-- //approve -->
+
+    </article>
+    <!-- //contents -->
+</section>
+</body>
+</html>
