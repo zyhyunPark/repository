@@ -1,0 +1,362 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>양산품번 조회</title>
+    <%@include file="../z_msp_100/inc_header.htm" %>
+    <script>
+        var callBack = '<%=callBack%>';
+        var spras = '<%=IV_SPRAS%>';
+        var matnr = '<%=IV_MATNR%>';
+        var dataSource, grid;
+
+        $(document).ready(function() {
+            setForm();
+            setListbox();
+            setButton();
+            setGrid();
+        });
+
+        function setListbox(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_03');
+            cfc.addParam('IV_BUKRS', 'X', false);
+            cfc.addParam('IV_WERKS', 'X', false);
+
+            cfc.addParam('CT_DVDIV', '', false);
+            cfc.addParam('CT_LCDIV', '', false);
+            cfc.addParam('CT_CLINT', '', false);
+            cfc.addParam('CT_CARTP', '', false);
+            cfc.addParam('CT_DIV01', '', false);
+            cfc.addParam('CT_DIV02', '', false);
+            cfc.addParam('CT_DIV03', '', false);
+            cfc.addParam('CT_NATCD', '', false);
+            cfc.addParam('CT_EXGCD', '', false);
+            cfc.addParam('CT_BUKRS', '', false);
+            cfc.addParam('CT_WERKS', '', false);
+            cfc.addParam('CT_GDGCD', '', false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    var combobox_BUKRS = $("#BUKRS").data("kendoDropDownList");
+                    data.CT_BUKRS.unshift({value:'',text:'All'});
+                    combobox_BUKRS.setDataSource(new kendo.data.DataSource({data:data.CT_BUKRS}));
+                    combobox_BUKRS.select(0);
+                    var combobox_WERKS = $("#WERKS").data("kendoDropDownList");
+                    data.CT_WERKS.unshift({value:'',text:'All'});
+                    combobox_WERKS.setDataSource(new kendo.data.DataSource({data:data.CT_WERKS}));
+                    combobox_WERKS.select(0);
+
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container1"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container1"), false);
+                }
+            });
+        }
+
+        function setForm(){
+            $("#WERKS").kendoDropDownList({
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0
+            });
+            $("#BUKRS").kendoDropDownList({
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0
+            });
+            // 2018.10.26 품번 필드에 data 세팅
+            $("#IV_MATNR").val(matnr);
+        }
+
+        function setButton(){
+            // 조회
+            $("#searchBtn").click(function() {
+                if($("#IV_MATNR").val() == ''){
+                    alert('품번을 작성해주세요.');
+                }else{
+                    if($("#IV_MATNR").val().length < 5){
+                        alert("5자리 이상 작성해주세요.")
+                    }else{
+                        grid.dataSource.read(getListData('S'));
+                    }
+                }
+            });
+
+            // 적용
+            $("#selectBtn").click(function() {
+                // 2018.10.29 적용 버튼 추가
+
+                var rowData = [];
+                var _chkCnt = 0;
+                // var _chk = $("#grid .k-state-selected .checkAll");
+                var _obj = $("#grid .checkAll");
+                for(var i=0; i<_obj.length; i++){
+                    if(_obj[i].checked == true) {
+                        _chkCnt ++;
+                        // IE에서 closest 지원하지 않음
+                        // rowData.matnr = _obj[i].closest("tr").children[1].innerText;
+                        // rowData.maktx = _obj[i].closest("tr").children[2].innerText;
+                        // rowData.rmark = _obj[i].closest("tr").children[4].innerText;
+                        rowData.matnr = _obj[i].parentElement.parentElement.children[1].innerText;
+                        rowData.maktx = _obj[i].parentElement.parentElement.children[2].innerText;
+                        rowData.werks = _obj[i].parentElement.parentElement.children[3].innerText;
+                        rowData.name1 = _obj[i].parentElement.parentElement.children[4].innerText;
+                        rowData.rmark = _obj[i].parentElement.parentElement.children[5].innerText;
+                        if(!rowData.rmark) {
+                            alert("ERP품번 변경사유를 입력해주세요.");
+                            return;
+                        } else {
+                            callFunc(rowData);
+                        }
+                    }
+                }
+                if(_chkCnt == 0) {
+                    alert("품번을 선택해주세요.");       
+                    return;
+                }
+            });
+
+            $("#pclose").click(function() {
+                  self.close();
+            });
+
+            $("#IV_MATNR").bind("keydown", function(e) {
+                if (e.which == 13) {
+                    $("#searchBtn").trigger("click");
+                }
+            });
+        }
+
+        function setGrid() {
+            var dataSource = new kendo.data.DataSource({
+                type: "json",
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData('')
+                    }
+                },
+                schema: {
+                    data: function(data) {
+                        return data.CT_LIST;
+                    },
+                    total: function(data) {
+                        return data.CT_LIST.length;
+                    },
+                    model: {
+                        fields: {
+                            matnr: { editable: false },
+                            maktx: { editable: false },
+                            name1: { editable: false }
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                // resizable: true,
+                selectable: true,
+                editable: true,
+                columns: [
+                    { selectable: true, width:30, template:'<input type="checkbox" class="checkAll">'},
+                    { field: "matnr", title: "품번", width: 120/*,
+                        attributes: {
+                            class: "test-class",
+                            style: "text-decoration: underline; cursor: Pointer;"
+                        }*/
+                    },
+                    { field: "maktx", title: "품명", width: 180},
+                    { field: "werks", title: "ERP공장코드", width: 80},
+                    { field: "name1", title: "ERP공장내역", width: 80},
+                    { field: "rmark", title: "ERP품번 변경사유", width: 300, attributes:{class:"st-left"}}
+                ]
+            }).data("kendoGrid");
+            // 그리드 데이터 없을때
+            grid.bind("dataBound", function(e) {
+                var msg = "일치하는 데이터가 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns.length;
+                    $(e.sender.wrapper)
+                        .find('tbody')
+                        .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                } else {
+                    // 2018.10.29 checkbox selected single row
+                    $(".checkAll").bind("click", function (e) {
+                        var grid = $("#grid").data("kendoGrid");
+                        var rowData = grid.dataSource._data;
+                        var clickRow = $(e.target).closest("tr");
+                        var _chk = clickRow.context.checked;
+
+                        var _obj = $("#grid .checkAll");
+                        for(var i=0; i<_obj.length; i++){
+                              _obj[i].checked = false;
+                        }
+
+                        if(_chk == true) {
+                            clickRow.context.checked = true;
+                            // alert(clickRow.index());
+                        }
+                   });
+                }
+            });
+
+            // var grid = $("#grid").data("kendoGrid");
+            // grid.tbody.on("click", ".checkAll", onClick);
+        }
+
+        function getListData(type) {
+            // 2018.10.26 init 실행 시 품명 조회 및 유효성 검사
+            var matnr = $("#IV_MATNR").val().replace(/-/gi, '');
+            if (matnr.match(/[^a-zA-Z0-9]/) != null ) {
+                alert('품명은 영문과 숫자만 입력 가능합니다.');
+                $("#IV_MATNR").focus();
+                return;
+            }
+
+            if(matnr.length == 0) {
+                return;
+            }
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF212_02');
+            cfc.addParam('IV_BUKRS', $("#BUKRS").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_WERKS', $("#WERKS").data("kendoDropDownList").value(), false);
+            // cfc.addParam('IV_SPRAS', '3', false);
+            cfc.addParam('IV_SPRAS', spras, false);
+            cfc.addParam('IV_MATNR', matnr, false);
+            cfc.addParam('CT_LIST', '', false);
+
+            return cfc.getData();
+            // if(type == 'F'){ return null }
+            // else { return cfc.getData(); }
+        }
+
+        // function onChange(arg) {
+        //     var selectRows = this.select();
+        //     var rowData = this.dataItem(selectRows);
+        //     callFunc(rowData);
+        // }
+
+        // function onClick(e) {
+        //     var grid = $("#grid").data("kendoGrid");
+        //     var rowData = grid.dataSource._data;
+        //     var clickRow = $(e.target).closest("tr");
+        //     var _chk = clickRow.context.checked;
+
+        //     var _obj = $("#grid .checkAll");
+        //     for(var i=0; i<_obj.length; i++){
+        //           _obj[i].checked = false;
+        //     }
+
+        //     if(_chk == true) clickRow.context.checked = true;
+        // };
+
+        // function onSelect() {
+        //     var _chk = $("#grid .k-state-selected .checkAll")[0].checked;
+        //     if(!_chk) {
+        //       alert("품번을 선택해주세요.");
+        //       return;
+        //     }
+
+        //     var rowData = grid.dataItem(grid.select());
+        //     // 2018.10.26 ERP품번 변경사유 유효성 check
+        //     if(!rowData) {
+        //         alert("품번을 선택해주세요.");
+        //     } else if (!rowData.rmark) {
+        //         alert("ERP품번 변경사유를 입력해주세요.");
+        //     } else {
+        //         callFunc(rowData);
+        //     }
+        // }
+
+        function callFunc(rowData) {
+            if (callBack != '') {
+                callBackFunc(window.opener, callBack, [rowData]);
+            } else {
+                alert("empty callBack");
+            }
+            self.close();
+        }
+
+
+    </script>
+</head>
+<body>
+    <div class="popup">
+        <h2 class="pop-tit">양산 품번 조회</h2>
+        <div class="pop-con">
+            <div class="hd-sch">
+                <!-- 2018.10.29 검색 필드 width 조정 및 적용 버튼 추가 -->
+                <div class="dis-in txKeep">
+                    <span class="tit-tx" style="min-width: 60px">법인</span>
+                    <input type="hidden" id="BUKRS" style="width: 180px" />
+                    <span class="tit-tx" style="min-width: 60px">공장</span>
+                    <input type="hidden" id="WERKS" style="width: 180px" />
+                    <span class="tit-tx" style="min-width: 60px">품번</span>
+                    <input type="text" id="IV_MATNR" class="input" style="width: 180px" />
+                </div>
+
+                <!-- <table>
+                    <colgroup>
+                        <col width="60">
+                        <col width="60">
+                        <col width="60">
+                    </colgroup>
+                    <tbody>
+                    <tr>
+                        <th>법인</th>
+                        <td>
+                            <input type="hidden" id="BUKRS"/>
+                        </td>
+                        <th>공장</th>
+                        <td width=60px>
+                            <input type="hidden" id="WERKS" />
+                        </td>
+                        <th>품번</th>
+                        <td>
+                            <input type="text" id="IV_MATNR" class="input" />
+                        </td>
+                    </tr>
+                    </tbody>
+                </table> -->
+
+                <div class="right">
+                    <a id="searchBtn" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                    <a id="selectBtn" class="btn btn-red" ><i class="fa fa-check"></i> 적용</a>
+                </div>
+            </div>
+        </div>
+    <!-- container -->
+    <article id="container1">
+        <!-- tree -->
+        <div class="row-bx">
+            <div id="grid" style="height: 250px"></div>
+        </div>
+        <!-- //tree -->
+    </article>
+    <!-- //container -->
+      <!-- 2018.10.25 IE 엔터 입력 시 popup 창 close 오류 수정 -->
+      <!-- <button class="bt-close" onclick="self.close();"><span>닫기</span></button> -->
+      <div id="pclose" class="bt-close" ><span>닫기</span></div>
+    </div>
+
+</body>
+</html>
