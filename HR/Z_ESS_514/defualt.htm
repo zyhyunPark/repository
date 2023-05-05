@@ -1,0 +1,951 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html lang="ko">
+<html>
+<head>
+    <title>근무관리시스템 M Plan</title>
+<%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var cymd;
+        var ivFinfg = '';
+        var pa_pernr = '<%=PA_PERNR%>';
+        var pa_spmon = '<%=PA_SPMON%>';
+        var popup = '<%=POPUP%>';
+        var pwtyp = '';
+        var calendar;
+        var grid_1, dataSource_1;
+        var title;
+
+        $(document).ready(function() {
+            // 팀원 근무실적 조회 경로일 경우
+            if(popup == 'X') setPopupTitle();
+            // 마감일 및 마감여부 체크
+            getYearEndInfo();
+            // 권한 체크
+            authorityCheck();
+        });
+// =============================================================================================================================================
+        function getYearEndInfo() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PTS_GET_YEAR_ENDDT");
+            cfc.addParam('I_DATUM', '<%=sy-datum(8)%>', false);
+
+            data = callSyncData(cfc);
+            ivFinfg = data.E_FINFG;
+            cymd = (ivFinfg== 'X')? moment(data.E_FINDT, 'YYYYMMDD') : moment('<%=sy-datum(8)%>','YYYYMMDD');
+        }
+
+        function authorityCheck(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PT_GET_WORK_TYPE");
+            cfc.addParam('IV_DATUM', cymd.format('YYYYMMDD'), false);
+            cfc.addParam('IV_PERNR', (popup == 'X') ? pa_pernr : '', false);
+
+            $.ajax({
+                url : URL.callFunction,
+                async : false,
+                dataType : "jsonp",
+                jsonp : "callback",
+                data : cfc.getData(),
+                type : "POST",
+                success : function(data) {
+                    if (data.ES_RESULT.subrc == "" || data.ES_RESULT.subrc == "0") {
+                        // pwtyp(1: 고정근무/2: 선택근무/3: 단축근무/4: 단축근무) 2019.02.26
+                        pwtyp = data.EV_PWTYP;
+                        var template = kendo.template($("#template").html());
+                        $("#html").html(template({popup: popup}));
+                        $(".allow_user").show();
+                        setSearchBox();
+                        if(pwtyp == 1 || pwtyp == 3 || pwtyp == 4) {
+                            $(".pwtyp_1").show();
+                            $('.pwtyp_2').hide();
+                            setDataSource();
+                            setGrid_1();
+                        } else if(pwtyp == 2) {
+                            $(".pwtyp_1").hide();
+                            $('.pwtyp_2').show();
+                            setGrid_2('', cymd.format('YYYY') + "." + cymd.format('MM'));
+                            setForm();
+                        }
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error : function() {
+                    alert("error");
+                },
+                beforeSend : function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete : function() {
+                    // kendo.ui.progress($("#container"), false);
+                    kendo.ui.progress($("#container"), pwtyp == 2 ? true : false);
+                }
+            });
+        }
+
+        function setPopupTitle() {
+            $("section#container").attr("id", "popup_wrap2");
+            $("article#contents").attr("id", "container");
+            $("#portal_location").hide();
+            $("#portal_title").hide();
+            $("#popup_header").show();
+        }
+
+        function setSearchBox() {
+            // 팀원 근무실적 조회 경로일 경우
+            if(pa_pernr != '') {
+                if(cymd.format('YYYYMM') != pa_spmon) {
+                    cymd = moment(pa_spmon,'YYYYMM').endOf("month");
+                }
+            }
+
+            var minDate = (ivFinfg == 'X') ? new Date(cymd) : (cymd.format('YYYY') >= 2019) ? new Date(cymd.format('YYYY'), 1, 0) : new Date(2018, 10, 0);
+            var maxDate = new Date(cymd);
+
+            // pwtyp(1: 고정근무/2: 선택근무/3: 단축근무/4: 단축근무) 2019.02.26
+            if(pwtyp != 2) {
+                $("#sDt_1").val(cymd.format('YYYY') + "." + cymd.format('MM'));
+                setWeekCombo(cymd.format('YYYYMM'), pwtyp);
+                $("#sDt_1").kendoDatePicker({
+                    culture: "ko-KR",
+                    format: "yyyy.MM",
+                    depth: "year",
+                    start: "year",
+                    min: minDate,
+                    max: maxDate,
+                    change: function(e) {
+                        setWeekCombo(kendo.toString(this.value(), "yyyyMM"), pwtyp);
+                    }
+                });
+                $("#searchBtn_1").click(function() {
+                    grid_1.dataSource.read(getListData_1());
+                });
+            } else {
+                $("#sDt_2").val((popup == 'X')? moment(pa_spmon, 'YYYYMM').format('YYYY.MM') : cymd.format('YYYY') + "." + cymd.format('MM'));
+                $("#sDt_2").kendoDatePicker({
+                    culture: "ko-KR",
+                    format: "yyyy.MM",
+                    depth: "year",
+                    start: "year",
+                    min: minDate,
+                    max: maxDate
+                });
+                $("#searchBtn_2").click(function() {
+                    setGrid_2('', $("#sDt_2").val());
+                });
+            }
+
+            // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            $("#sDt_1, #sDt_2").attr("readonly", true);
+        }
+// =============================================================================================================================================
+// 1: 고정근무 / 3:단축근무 / 4:단축근무
+// =============================================================================================================================================
+        function setWeekCombo(yyyymm, pwtyp) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PT_MSS_WEEK_LIST");
+            cfc.addParam('IV_ZYYMM', $("#sDt_1").val().replace(/\./g, ''), false);
+            cfc.addParam('IV_PWTYP', pwtyp, false);
+
+            $.ajax({
+                url : URL.callFunction,
+                async : false,
+                dataType : "jsonp",
+                jsonp : "callback",
+                data : cfc.getData(),
+                type : "POST",
+                success : function(data) {
+                    $("#sWeek_1").empty();
+                    var today = cymd.format("YYYYMMDD");
+
+                    for (var i = 0; i < data.ET_ZWEEK.length; i++) {
+                        var begda = data.ET_PERIOD[i].begda;
+                        var endda = data.ET_PERIOD[i].endda;
+                        var selected = "";
+                        var todayZweek;
+                        // 오늘 날짜가 기간 내에 있으면
+                        if (today >= begda && today <= endda) {
+                            selected = "selected='selected' ";
+                            todayZweek = data.ET_PERIOD[i].zweek;
+                        }
+                        // 미래 일자 조회 차단
+                        if(data.ET_PERIOD[i].zweek > todayZweek) {
+                            break;
+                        }
+
+                        $("#sWeek_1").append("<option value='"+begda+"|"+endda +"' " + selected + ">" +
+                            moment(begda, "YYYYMMDD").format("YYYY.MM.DD") + " ~ " +
+                            moment(endda, "YYYYMMDD").format("YYYY.MM.DD") + "</option>");
+                    }
+                },
+                error : function() {
+                    alert("error");
+                },
+                beforeSend : function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete : function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getListData_1() {
+            if ($("#sDt_1").val() == null || $("#sDt_1").val() == "") {
+                alert("조회 월을 선택하세요.");
+                return null;
+            }
+
+            if ($("#sWeek_1").val() == null || $("#sWeek_1").val() == "") {
+                alert("주를 선택하세요.");
+                return null;
+            }
+
+            var cfc = new CallFuncClass();
+            var zyymm = $("#sDt_1").val().replace(/\./g, '');
+            var begda = $("#sWeek_1").val().substr(0, 8);
+            var endda = $("#sWeek_1").val().substr($("#sWeek_1").val().indexOf("|")+1, 8);
+
+            cfc.setFuncName("Z_HR_PT_ESS_WK_REPORT");
+            cfc.addParam('IV_ZYYMM', zyymm, false);
+            cfc.addParam('IV_PERNR', '', false);
+            cfc.addParam('IV_DATUM', cymd.format('YYYYMMDD'), false);
+            cfc.addParam('IV_BEGDA', begda, false);
+            cfc.addParam('IV_ENDDA', endda, false);
+            cfc.addParam('IV_PWTYP', pwtyp, false);
+
+            return cfc.getData();
+        }
+
+        function getDaysValue(item, idx) {
+            var html = item['days'+idx];
+
+            if(item['days'+idx] == '') {
+                html = '미등록';
+            }
+            if(title !== undefined) {
+                if (item['days'+idx] == '' && title['colr'+idx] == 'X') {
+                    html = '';
+                }
+                if(item['days'+idx] == 'X' || idx == 1 || idx == 7) {
+                    html = '';
+                }
+            }
+
+            return html;
+        }
+
+        function setDataSource() {
+            dataSource_1 = new kendo.data.DataSource({
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData_1()
+                    }
+                },
+                requestEnd: function(e) {
+                    // grid header title
+                    title = e.response.ES_TITLE;
+                    if (title != undefined) {
+                        for (var i = 1; i <= 7; i++) {
+                            $("#grid_1 thead [data-field=days"+i+"] .k-link").html( title["days"+i] );
+                            // 공휴일 header title
+                            if(title["colr"+i]) {
+                                $("#grid_1 thead [data-field=days"+i+"] .k-link").css('color', 'red');
+                            } else if(i!=1 && i!=7) {
+                                $("#grid_1 thead [data-field=days"+i+"] .k-link").css('color', 'black');
+                            }
+                        }
+                    }
+                },
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length"
+                }
+            });
+        }
+
+        function setGrid_1() {
+            grid_1 = $("#grid_1").kendoGrid({
+                dataSource: dataSource_1,
+                autoBind: true,
+                height: (popup == 'X') ? 360 : 500,
+                sortable: true,
+                resizable: true,
+                pageable: false,
+                navigatable: true,
+                selectable: true,
+                columns: [
+                    { title: "연장근무시간",
+                      columns:[
+                          { field: "orgtx", title: "소속", width: 100},
+                          { field: "jikwi", title: "직위", width: 80},
+                          { field: "ename", title: "성명", width: 80},
+                          { field: "days1", title: "일", width: 70, template: function(item) {return getDaysValue(item, 1);}},
+                          { field: "days2", title: "월", width: 70, template: function(item) {return getDaysValue(item, 2);}},
+                          { field: "days3", title: "화", width: 70, template: function(item) {return getDaysValue(item, 3);}},
+                          { field: "days4", title: "수", width: 70, template: function(item) {return getDaysValue(item, 4);}},
+                          { field: "days5", title: "목", width: 70, template: function(item) {return getDaysValue(item, 5);}},
+                          { field: "days6", title: "금", width: 70, template: function(item) {return getDaysValue(item, 6);}},
+                          { field: "days7", title: "토", width: 70, template: function(item) {return getDaysValue(item, 7);}},
+                          { field: "sumtm", title: "누적<br>연장시간", width: 80},
+                          { field: "restm", title: "잔여<br>연장시간", width: 80}
+                      ]
+                   }
+                ]
+            }).data("kendoGrid");
+            // 그리드 데이터 없을때
+            grid_1.bind("dataBound", function(e) {
+                var msg = "조회내역이 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns[0].columns.length;
+                    $(e.sender.wrapper)
+                    .find('tbody')
+                    .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                } else {
+                    //grid.tbody.find("tr").css("cursor","pointer");
+                    // rowspan
+                    //grid_rowspan("grid_1", 0);
+                }
+            });
+
+            // header 색상
+            $("#grid_1 thead [data-field=days1] .k-link").css('color', 'red');
+            $("#grid_1 thead [data-field=days7] .k-link").css('color', 'blue');
+        }
+// =============================================================================================================================================
+// 2: 선택근무
+// =============================================================================================================================================
+        function setForm() {
+            var evYYMM = moment($("#sDt_2").val().replace(/\./g, ''),'YYYYMM');
+            calendar = new Calendar($("#calendarDiv"));
+            calendar.setDate(cymd.format('YYYY'), cymd.format('MM'), cymd.format('DD'));
+            calendar.init();
+            calendar.setDate(evYYMM.format('YYYY'), evYYMM.format('MM'), '01');
+            calendar.initDate();
+            kendo.ui.progress($("#container"), true);
+        }
+
+        function setCreate(data, type) {
+            var evYYMM = moment($("#sDt_2").val().replace(/\./g, ''),'YYYYMM');
+            calendar.setDate(evYYMM.format('YYYY'), evYYMM.format('MM'), '01');
+            calendar.initDate();
+            calendar.setSchedule(data);
+            kendo.ui.progress($("#container"), false);
+        }
+
+        function getListData_2(type, yyyymm) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PT_ESS_REPORT");
+            cfc.addParam('IV_MONTH', yyyymm.replace(/\./g, ''), false);
+            cfc.addParam('IV_PERNR', ( popup == 'X') ? pa_pernr : '', false);
+            cfc.addParam('IV_PWTYP', pwtyp, false);
+            return cfc.getData();
+        }
+
+        function setGrid_2(type, yyyymm) {
+            $('#zmost_mhour').text("");     // 필수근무시간
+            $('#zmax_mhour').text("");      // 최대근무가능시간
+            $('#zmonst_mhour').text("");    // 누적근무시간
+            $('#ztart_mhour').text("");     // 실근무시간
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data : getListData_2(type, yyyymm),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {  // 신청가능한 대상자일 경우
+                        setCreate(data, type);
+                        if(data.ES_RESULT.message)  alert(data.ES_RESULT.message);
+                    } else {                                                                        // 신청가능한 대상자가 아닐 경우
+                        alert(data.ES_RESULT.message);
+                        if (popup == 'X') { top.window.close(); }
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+// =============================================================================================================================================
+    </script>
+</head>
+<body>
+<div id="html"></div>
+    <script type="text/x-kendo-template" id="template">
+    # if (popup == 'X') { #
+        <section id="popup_wrap2">
+            <!-- popupTitle -->
+            <div id="popup_header">
+                <header>
+                   <h1>근무실적 조회</h1>
+                   <a href="javascript:top.window.close()" class="btn_close">Close</a>
+                </header>
+            </div>
+            <!--// popupTitle -->
+
+            <!-- container -->
+            <article id="container">
+    # } else { #
+        <section id="container">
+        <!-- 근태포털 title -->
+        <div class="location" id="portal_location">
+            <span class="home">Home</span>
+            <span>근무관리</span>
+            <strong>근무실적 조회</strong>
+        </div>
+
+        <!-- container -->
+        <article id="contents">
+            <!-- 근태포털 title -->
+            <div id="portal_title">
+                <h3>근무관리</h3>
+                <h4 class="allow_user" style="display: none">근무실적 조회</h4>
+            </div>
+    # } #
+            <!-- search -->
+            <div class="search_box pwtyp_2" style="display: none">
+                <table>
+                    <colgroup>
+                        <col width="80" />
+                        <col width="*" />
+                    </colgroup>
+                    <tr>
+                        <th scope="row">근무 월</th>
+                        <td>
+                            <input type="text" id="sDt_2" maxlength="7" />
+                            <button type="button" id="searchBtn_2" class="btn_search">검색</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- list -->
+            <div class="area_divide">
+                <!-- LEFT_calendar -->
+                <div class="pwtyp_2 left" style="width: 78%" id="calendarDiv" style="display: none"></div>
+                <!-- //LEFT_calendar -->
+
+                <!-- RIGHT_table -->
+                <div class="pwtyp_2 right" style="width: 20%;" id="HourDiv" style="display: none"></div>
+                <!--// RIGHT_table -->
+
+                <!-- permission msg -->
+                <!-- <div class="deny_user" style="margin-top:100px;text-align:center">사용권한이 없습니다.</div> -->
+                <!-- //permission msg -->
+
+                <!-- form -->
+                <div class="pwtyp_2 form_box" style="width: 78%; display: none">
+                    <table class="pwtyp_2 form_basic" style="display: none">
+                        <colgroup>
+                            <col width="150">
+                            <col width="*">
+                            <col width="150">
+                            <col width="*">
+                        </colgroup>
+                        <tbody>
+                            <tr>
+                                <th scope="row">필수근무시간</th>
+                                <td><span id="zmost_mhour"/></td>
+                                <th scope="row">최대근무가능시간</th>
+                                <td><span id="zmax_mhour"/></td>
+                            </tr>
+                            <!-- <tr>
+                                <th scope="row">누적근무시간</th>
+                                <td><span id="zmonst_mhour"/></td>
+                                <th scope="row">실근무시간</th>
+                                <td><span id="ztart_mhour"/></td>
+                            </tr> -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- //form -->
+
+                <!-- bar chart -->
+                <div class="pwtyp_2" style="width: 78%; display: none">
+                    <ul class="bar_block_thumbnail">
+                        <li class="default">필수</li>
+                        <li class="max">연장</li>
+                        <li class="confirm">누적근무</li>
+                        <li class="paymenttime">누적근무(월말예상)</li>
+                    </ul>
+                </div>
+                <!-- <ul class="pwtyp_2 bar_block_thumbnail" style="width: 78%; display: none">
+                    <li class="default">필수</li>
+                    <li class="max">연장</li>
+                    <li class="confirm">누적근무</li>
+                    <li class="paymenttime">누적근무(계획반영)</li>
+                </ul> -->
+                <div class="pwtyp_2 bar_wrap" id="barChartDiv" style="width: 78%; display: none; margin-top: 55px"></div>
+                <!-- //bar chart -->
+
+            </div>
+            <!-- // list -->
+
+            <!-- search -->
+            <div class="search_box pwtyp_1">
+                <table>
+                    <colgroup>
+                        <col width="80" />
+                        <col width="*" />
+                    </colgroup>
+                    <tr>
+                        <th scope="row">구분</th>
+                        <td>
+                            <input type="text" id="sDt_1" maxlength="7"/>
+                            <select id="sWeek_1">
+                            </select>
+                            <button type="button" class="btn_search" id="searchBtn_1">검색</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- list -->
+            <div id="grid_1" class="pwtyp_1"></div>
+            <!-- //list -->
+
+        </article>
+    </section>
+    </script>
+    <script>
+    var Calendar = function(container) {
+        var scheduleObject=new Array();
+        // this.han_day=["토","일","월","화","수","목","금"];
+        this.han_day=["일","월","화","수","목","금","토"];
+        this.now_today = new Date();
+        this.year = this.now_today.getFullYear();
+        this.month = this.getNumberspace(this.now_today.getMonth() + 1);
+        this.day = this.now_today.getDate();
+        this.now_month = this.year+'-'+this.month;
+        this.day_max = this.getDaymax(this.year, this.month-1);
+        this.week_start = new Date(this.year,this.month-1,1).getDay();
+        this.week_last = new Date(this.year,this.month-1,this.day_max).getDay();
+        this.container = container;
+    };
+    Calendar.prototype = {
+        init : function() {
+            this.container.html(this.mkCaption(this));
+            this.mkCalendar();
+        },
+        setDate : function(y,m,d) {
+            this.year = y;
+            this.month = m;
+            this.day = d;
+        },
+        getDateYYYYMM : function() {
+            return this.year+''+this.getNumberspace(this.month * 1);
+        },
+        modiDate : function(e) {
+            this.month = this.month*1;
+            if (e.currentTarget.id =='btn_month_prev') {
+                this.month--;
+                if (this.month==0) {
+                    this.year--;
+                    this.month = 12;
+                }
+            } else if (e.currentTarget.id =='btn_month_next') {
+                this.month++;
+                if (this.month>=13) {
+                    this.year++;
+                    this.month = 1;
+                }
+            }
+            $('#month_title').html(this.year+'-'+this.getNumberspace(this.month));
+            this.mkCalendar();
+        },
+        mkCaption : function(e) {
+            var owner = e;
+            var mkHtml = "";
+            mkHtml += '<table id="calendarTable1" class="list_calendar">';
+            mkHtml += '<colgroup>';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '<col width="*" />';
+            mkHtml += '</colgroup>';
+            mkHtml += '<thead>';
+            mkHtml += '<tr>';
+            for(var i=0; i<owner.han_day.length; i++) {
+                var strClass = '';
+                if (i == 6) strClass = ' class="cal_sat"';
+                else if (i == 0) strClass = ' class="cal_sun"';
+                else strClass = '';
+                mkHtml += '<th scope="col" '+strClass+'>'+owner.han_day[i]+'</th>';
+            }
+            mkHtml += '</tr>';
+            mkHtml += '</thead>';
+            mkHtml += '<tbody class="cal_week">';
+            mkHtml += '</tbody>';
+            mkHtml += '</table>';
+            return mkHtml;
+        },
+        mkCalendar : function() {       /* 화면에 calendar 그리기 */
+            this.day_max = this.getDaymax(this.year, this.month-1);             // 총 일수
+            this.week_start = new Date(this.year,this.month-1,1).getDay();      // 시작 요일
+            this.week_last = new Date(this.year,this.month-1,this.day_max).getDay();    // 마지막 요일
+
+            //* 토요일 시작(토~금)으로 변경( 일월화수목금토(0123456) => 토일월화수목금(0123456) *//
+            // 월요일 부터 시작 ( 일월화수목금토(0123456) => 월화수목금토일(0123456)
+            // if (this.week_start == 0) this.week_start = 6; // 일요일 => 6으로 설정
+            // else this.week_start = this.week_start-1; // 월~토 => 1씩 앞으로
+            // if (this.week_last == 0) this.week_last = 6;
+            // else this.week_last = this.week_last-1;
+            // if (this.week_start == 0) this.week_start = 1; // 일요일 => 1로 설정
+            // else if (this.week_start == 6) this.week_start = 0; // 토요일 => 0으로 설정
+            // else this.week_start = this.week_start+1; // 월~금 => 1씩 뒤로
+
+            // if (this.week_last == 0) this.week_last = 1; // 일요일 => 1로 설정
+            // else if (this.week_last == 6) this.week_last = 0; // 토요일 => 0으로 설정
+            // else this.week_last = this.week_last+1; // 월~금 => 1씩 뒤로
+
+            this.total_week = Math.ceil((this.day_max + this.week_start)/7);    // 총 주
+            var todays = this.year+'-'+this.month;
+            var day=1;
+            var mkTr='', mkTr_th='', mkTr_td=''; //mkTr_th : 날짜 출력 (ex: 5/1 5/2 5/3), mkTr_td : 근무계획/공휴일 출력
+            var hour_html = '';                  //hour_html : 인정근무시간 grid table
+            hour_html += '<table class="list_calendar cal_total">';
+            hour_html += '<colgroup>';
+            hour_html += '<col width="*" />';
+            hour_html += '<col width="*" />';
+            hour_html += '</colgroup>';
+            hour_html += '<thead>';
+            hour_html += '<tr>';
+            hour_html += '<th scope="col" colspan="2">누적근무시간</th>';
+            hour_html += '</tr>';
+            hour_html += '</thead>';
+            hour_html += '<tbody>';
+
+            for(var i=1;i<=this.total_week;i++){
+                mkTr_th = '<tr id="zweek_'+i+'">';
+                mkTr_td = '<tr>';
+                hour_html += '<tr>';
+                hour_html += '<th scope="col" class="cal_wTotal"><a href="#none">주 누계</a></th>';
+                hour_html += '<th scope="col" class="cal_mTotal"><a href="#none">월 누계</a></th>';
+                hour_html += '</tr>';
+                hour_html += '<tr>';
+                hour_html += '<td class="cal_wTotal"><a href="#none"><span id="wsum'+i+'"/></a></td>';
+                hour_html += '<td class="cal_mTotal"><a href="#none"><span id="msum'+i+'"/></a></td>';
+                hour_html += '</tr>';
+                for(var j=0;j<7;j++){
+                    if (!((i==1 && j < this.week_start) || (i == this.total_week && j > this.week_last))) {
+                        var strDay = ''+day;
+                        if (day < 10) strDay = '0' + strDay;
+                        var class_nm = '';  // th class name
+                        var class_nm2 = ''; // td class name
+                        if (j==6) {         // 토요일
+                            class_nm = 'cal_sat cal_plan';
+                            class_nm2 = 'cal_sat';
+                        } else if (j==0) {  // 일요일
+                            class_nm = 'cal_sun cal_plan';
+                            class_nm2 = 'cal_sun';
+                        }
+
+                        var a_tag = '<a href="#none" id="mdd_'+strDay+'">'+(this.month-0)+'/'+day+'</a>';   // th href
+                        var a_tag2 = '<a id="day_'+strDay+'" href="#none">';                                // td href
+                        a_tag2 += '<ul id="ul_'+strDay+'">';
+                        a_tag2 += '<li></li><li></li><li></li>';
+                        a_tag2 += '</ul></a>';
+
+                        mkTr_th += '<th scope="col" class="' + class_nm + '">';
+                        mkTr_th += a_tag;
+                        mkTr_td += '<td class="' + class_nm2 + '">';
+                        mkTr_td += a_tag2;
+                        day++;
+                    } else {
+                        mkTr_th += '<th scope="col">';
+                        mkTr_td += '<td>';
+                    }
+                    mkTr_th += '</th>';
+                    mkTr_td += '</td>';
+                }
+                mkTr_th += '</tr>';
+                mkTr_td += '</tr>';
+                mkTr += (mkTr_th + mkTr_td);
+                mkTr_th = '';
+                mkTr_td = '';
+            }
+            hour_html += '</tbody>';
+            hour_html += '</table>';
+            $('#calendarTable1 tbody').html(mkTr);
+            $('#HourDiv').html(hour_html);
+        },
+        getDaymax : function(years,months) {
+            var i = 29, cday;
+            while(i<32){
+                cday = new Date(years,months,i);
+                if (cday.getFullYear()!=years || cday.getMonth()!=months) break;
+                i++;
+            }
+            return i-1;
+        },
+        getNumberspace : function(num) {
+            if (num<10) num = '0' + num;
+            return num;
+        },
+        initDate : function() {
+            $('#month_title').html(this.year+'-'+this.month);
+            this.mkCalendar();
+        },
+        setSchedule : function(data) {
+            var owner=this;
+            var rs = data.ET_LIST;
+            var rsPlan = data.ET_PLAN;
+            // 일별 근무시간
+            for (var i = 0; i < rs.length; i++) {
+                var rsDate = moment(rs[i].stddt,'YYYYMMDD');
+                var dd = rsDate.format("DD");
+                var $day = $('#day_'+dd);
+                var $mdd = $('#mdd_'+dd);
+                var $ul = $('#ul_'+dd);
+                var sTime = moment(rs[i].plbeg, 'HHmmss');              // 출근시간
+                var eTime = moment(rs[i].plend, 'HHmmss');              // 퇴근시간
+                var wTime = parseFloat(rs[i].arbst.trim()).toFixed(1);  // 일일근무시간 = 퇴근시간-출근시간-1(점심시간)
+                var wTimeString = ToFloat(wTime) + 'H';
+                var sTimePlan = moment(rsPlan[i].plbeg, 'HHmmss');      // (계획)출근시간
+                var eTimePlan = moment(rsPlan[i].plend, 'HHmmss');      // (계획)퇴근시간
+                var ulHtml = '';
+
+                if(rs[i].tsign == 'X') {
+                    // 공휴일
+                    $mdd.closest('th').addClass('cal_holiday');
+                    $day.closest('td').addClass('cal_holiday');
+
+                    if(rs[i].ttype == '03') {
+                        // 휴일특근 - 계획, 실적, 일일근무시간 표시
+                        if(rsPlan[i].ttype == '03') {
+                            $day.closest('td').addClass('work');
+                            ulHtml = '';
+                            ulHtml += '<li class="cal_txtplan">';
+                            ulHtml += '<span id="stimePlan_'+dd+'">(계획) ';
+                            ulHtml += rsPlan[i].ttext;
+                            ulHtml += '</span>';
+                            ulHtml += '</li>';
+                        }
+                        if(rs[i].ttext && wTimeString != "0H") {
+                            ulHtml += '<li>'+rs[i].ttext+'</li>';
+                            ulHtml += '<li>('+wTimeString+')</li>';
+                        }
+                    } else if(rs[i].ttype != '03' && wTimeString != "0H") {
+                        // 공휴일 근무(ex.출장) - 실적, 일일근무시간 표시
+                        ulHtml += '<li style="padding-top: 11px;">';
+                        ulHtml += '<span id="stime_'+dd+'">'+sTime.format('HH:mm')+'</span>';
+                        ulHtml += '<span> ~ </span>';
+                        ulHtml += '<span id="etime_'+dd+'">'+eTime.format('HH:mm')+'</span>';
+                        ulHtml += '</li>';
+                        ulHtml += '<li>('+wTimeString+')</li>';
+                    } else {
+                        // 공휴일 - 공휴일명 표시
+                        ulHtml += '<li>'+rs[i].ttext+'</li>';
+                    }
+                    $ul.html(ulHtml);
+                } else  if (rs[i].tsign == '6' || rs[i].tsign == '7') {
+                    // 주말
+                    if(rs[i].ttype == '03') {
+                        // 휴일특근 - 계획, 실적, 일일근무시간 표시
+                        if(rsPlan[i].ttype == '03') {
+                            ulHtml = '';
+                            ulHtml += '<li class="cal_txtplan">';
+                            ulHtml += '<span id="stimePlan_'+dd+'">(계획) ';
+                            ulHtml += rsPlan[i].ttext;
+                            ulHtml += '</span>';
+                            ulHtml += '</li>';
+                        }
+                        if(rs[i].ttext && wTimeString != "0H") {
+                            ulHtml += (rsPlan[i].ttype == '03' && rsPlan[i].ttext) ? '<li>' : '<li style="padding-top: 11px;">';
+                            ulHtml += rs[i].ttext+'</li>';
+                            ulHtml += '<li>('+wTimeString+')</li>';
+                        }
+                    } else if(rs[i].ttype != '03' && wTimeString != "0H") {
+                        // 공휴일 근무(ex.출장) - 실적, 일일근무시간 표시
+                        ulHtml += '<li style="padding-top: 11px;">';
+                        ulHtml += '<span id="stime_'+dd+'">'+sTime.format('HH:mm')+'</span>';
+                        ulHtml += '<span> ~ </span>';
+                        ulHtml += '<span id="etime_'+dd+'">'+eTime.format('HH:mm')+'</span>';
+                        ulHtml += '</li>';
+                        ulHtml += '<li>('+wTimeString+')</li>';
+                    }
+                    $ul.html(ulHtml);
+                } else {
+                    // 평일(공휴일, 주말 제외)
+                    $day.closest('td').attr('style', 'background: #e9e9e9 !important; opacity: 0.6');
+                    $day.css('cursor', 'default');
+                    $mdd.css('cursor', 'default');
+
+                    ulHtml = '';
+                    ulHtml += '<li class="cal_txtplan">';
+                    ulHtml += '<span id="stimePlan_'+dd+'">(계획) ';
+                    if(rsPlan[i].ttext) {
+                        ulHtml += rsPlan[i].ttext;
+                    } else {
+                        ulHtml += sTimePlan.format('HH:mm')+'</span>';
+                        ulHtml += '<span> ~ </span>';
+                        ulHtml += '<span id="etimePlan_'+dd+'">'+eTimePlan.format('HH:mm');
+                    }
+                    ulHtml += '</span>';
+                    ulHtml += '</li>';
+                    ulHtml += '<li>';
+                    $ul.html(ulHtml);
+
+                    // 근무실적 결재승인 건 or 심야근무 or 인포타입 등록 건 popup open
+                    if(rs[i].appid || rs[i].night || rs[i].z2001) {
+                        if(rs[i].ttext) {
+                            ulHtml += '<span id="stime_'+dd+'">'+rs[i].ttext+'</li></span>';
+                            if(wTimeString != "0H") ulHtml += '<li>('+wTimeString+')</li>';
+                        } else {
+                            ulHtml += '<span id="stime_'+dd+'">'+sTime.format('HH:mm')+'</span>';
+                            ulHtml += '<span> ~ </span>';
+                            ulHtml += '<span id="etime_'+dd+'">'+eTime.format('HH:mm')+'</span>';
+                            ulHtml += '</li>';
+                            ulHtml += '<li>('+wTimeString+')</li>';
+                        }
+                        $ul.html(ulHtml);
+
+                        if(rs[i].appid) {
+                            $('#day_'+dd+',#mdd_'+dd).css('cursor','pointer').click(function(e) {
+                                openHrTimeDisplay($(this).get(0).id.substring(4), rs);
+                            });
+                        }
+                    }
+                }
+            }
+            $(".cal_txtplan").closest('li').attr('style', 'font-size: 9px !important');
+
+            // 주/월 누계
+            if(data.ET_ACC.length != 0) {
+                var rsAcc = data.ET_ACC;
+                var $today = $('#mdd_'+cymd.format('DD'));
+
+                for(var i=1;i<=this.total_week;i++){
+                    var $wSum = $('#wsum'+i);
+                    var $mSum = $('#msum'+i);
+                    var wSum = parseFloat(rsAcc[i-1].zswtm).toFixed(1);    // 주 누계
+                    var mSum = parseFloat(rsAcc[i-1].scmat).toFixed(1);    // 월 누계
+                    var wSumString = ToFloat(wSum) + "H";
+                    var mSumString = ToFloat(mSum) + "H";
+                    $wSum.closest('span').text(wSumString);    // 주 누계
+                    $mSum.closest('span').text(mSumString);    // 월 누계
+                    if( $("#sDt_2").val() == (cymd.format('YYYY') + "." + cymd.format('MM'))) {    // 당월일 경우 이번 주까지만 주/월 누계 정보 display
+                        var zWeek = $today.closest('tr').attr('id').substr(-1, 1);
+                        if(i > zWeek) {
+                            $wSum.closest('span').empty();
+                            $mSum.closest('span').empty();
+                        }
+                    }
+                }
+            }
+
+            // 근무시간 통계
+            var rsTime = data.ES_TIME;
+            var zmost  = Number(rsTime.zmost.trim()).toFixed(1);     // 필수근무시간
+            var zmaxt  = Number(rsTime.zmaxt.trim()).toFixed(1);     // 최대근무가능시간
+            var zmonst = Number(rsTime.zmonst.trim()).toFixed(1);    // 누적근무시간
+            var arbst  = Number(rsTime.arbst.trim()).toFixed(1);     // 누적근무시간(월말예상)
+            var ztart  = Number(rsTime.ztart.trim()).toFixed(1);     // 실근무시간
+
+            var zmostString  = ToFloat(zmost) + 'H';     // 필수근무시간
+            var zmaxtString  = ToFloat(zmaxt) + 'H';     // 최대근무가능시간
+            var zmonstString = ToFloat(zmonst) + 'H';    // 누적근무시간
+            var arbstString  = ToFloat(arbst) + 'H';     // 누적근무시간(월말예상)
+            var ztartString  = ToFloat(ztart) + 'H';     // 실근무시간
+
+            $('#zmost_mhour').text(zmostString);         // 필수근무시간
+            $('#zmax_mhour').text(zmaxtString);          // 최대근무가능시간
+            $('#zmonst_mhour').text(zmonstString);       // 누적근무시간
+            $('#ztart_mhour').text(ztartString);         // 실근무시간
+
+            // bar chart 세팅
+            var def_avg = 0;    // 기본근무시간 비율 = 기본근무시간/최대근무가능시간(233h) * 100
+            var admit_avg = 0;  // 누적근무시간 비율 = 누적근무시간/최대근무가능시간(233h) * 100
+            var arbst_avg = 0;  // 누적근무시간(월말예상) 비율 = 누적근무시간(월말예상)/최대근무가능시간(233h) * 100
+
+            if (zmaxt > 0) {
+                def_avg = zmost/zmaxt * 100;
+                admit_avg = zmonst/zmaxt * 100;
+                arbst_avg = arbst/zmaxt * 100;
+
+                if (def_avg >= 100)   def_avg = 100;
+                if (admit_avg >= 100) admit_avg = 100;
+                if (arbst_avg >= 100) arbst_avg = 100;
+            }
+
+            var barHtml = '';
+            barHtml += '<div class="bar_default" style="width: '+def_avg+'%">';
+            barHtml += '<div class="paymenttime" style="left: '+arbst_avg+'%">누적근무시간<p><em>'+arbstString+'</em></p></div>';
+            barHtml += '<p class="bar_block'+ (admit_avg == 0 ? " c_none" : "") +'" style="text-align: left; width: '+admit_avg+'%">'+zmonstString+'</p>';
+            barHtml += '</div>';
+            $('#barChartDiv').html(barHtml);
+        }
+    }
+
+    function openHrTimeDisplay(dd, rs) {
+        var week = $("#day_"+dd).closest("td").index();
+        var day = $("#calendarTable1 thead th").eq(week).text().trim();
+        var csInfo, appId, appIdchn, hass, hassChn, ptype;
+        var popupUrl, popupWidth, popupHeight;
+
+        for (var i = 0; i < rs.length; i++) {
+            var openDay = rs[i].stddt.substring(rs[i].stddt.length, rs[i].stddt.length-2);
+            if(dd == openDay) {
+                csInfo = rs[i];
+                appId = rs[i].appid;        // 결재번호
+                appIdchn = rs[i].appidchn;  // 일일근태/수정근태 구분('' : 일일근태, 'X' : 수정근태)
+                hass = rs[i].hass;          // 업무대행(일일근태)
+                hassChn = rs[i].hasschn;    // 업무대행(수정근태)
+                ptype = rs[i].ptype;        // 관리직/현장직 구분('1' : 관리직, '2' : 현장직)
+
+                if(appIdchn) {              // 수정근태
+                    popupWidth   = 1000;
+                    popupHeight  = 800;
+                    if(hassChn) {   // 업무대행
+                        popupUrl = '../Z_HASS_516/display.htm';
+                    } else {
+                        popupUrl = '../Z_ESS_522/display.htm';
+                    }
+                } else {                    // 일일근태
+                    popupWidth   = 1000;
+                    popupHeight  = 600;
+                    if(hass) {              // 업무대행
+                        popupUrl = '../Z_HASS_512/display.htm';
+                    } else {
+                        popupUrl = '../Z_ESS_512/display.htm';
+                    }
+                }
+
+            }
+        }
+        sendFormPopup(popupUrl,'popupDis', {
+                        'CS_INFO': kendo.stringify(csInfo),
+                        'FLAG'   : '',
+                        'POPUP'  : 'X',
+                    }, popupWidth, popupHeight);
+    }
+
+    function ToFloat(number){
+        number = number.replace(/(0+$)/, "");
+        if(number.indexOf(".") == number.length-1) {
+            number = number.replace(".", "");
+        }
+        return number;
+    }
+    </script>
+</body>
+</html>
