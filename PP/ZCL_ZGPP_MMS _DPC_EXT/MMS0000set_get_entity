@@ -1,0 +1,401 @@
+METHOD mms0000set_get_entity.
+
+   DATA : lt_key    LIKE it_key_tab,
+          ls_entity LIKE er_entity,
+          ls_result TYPE zpps9001,
+          lv_viewid TYPE char6,
+          lv_mode   TYPE char1,
+          lv_mode2  TYPE char2,
+          lv_gubun2 TYPE char1,
+          lv_veran  TYPE ap_veran,
+          lv_pono   TYPE aufnr,
+          lv_type   TYPE bapi_mtype,
+          lv_msg    TYPE bapi_msg,
+          ls_worker TYPE zpps5695,
+          lt_5601   TYPE zppt5601,
+          lt_5602   TYPE TABLE OF zpps5602,
+          lt_5603   TYPE TABLE OF zpps5604,
+          lt_5604   TYPE TABLE OF zpps5604,
+          lt_1841   TYPE TABLE OF zpps1841,
+          lt_7001   TYPE TABLE OF zpps7001,
+          lt_7002   TYPE TABLE OF zpps7002,
+          lt_7003   TYPE TABLE OF zpps7003,
+          lt_7004_a TYPE TABLE OF zpps7004,
+          lt_7004_t TYPE TABLE OF zpps7004,
+          lt_0270   TYPE TABLE OF zpps0270,
+          lt_0290   TYPE TABLE OF zpps0290.
+
+   DATA : BEGIN OF lt_head,
+            item1   LIKE lt_5603,
+            item2   LIKE TABLE OF lt_5601,
+            item3   LIKE lt_1841,
+            comcode TYPE zcmt0011,
+            result  TYPE zpps9001,
+          END OF lt_head.
+
+   DATA : BEGIN OF lt_item,
+            item1 LIKE lt_5604,
+            item2 LIKE lt_5602,
+            item3 LIKE lt_7001,
+            item4 LIKE lt_0270,
+            item5 LIKE lt_0290,
+            item6 LIKE lt_7002,
+            item7 LIKE lt_7003,
+            item8 LIKE lt_7004_a,
+            item9 LIKE lt_7004_t,
+          END OF lt_item.
+*"----------------------------------------------------------------------
+*" 1.JSON -> ABAP
+*"----------------------------------------------------------------------
+  READ TABLE it_key_tab ASSIGNING FIELD-SYMBOL(<fs_key_tab>) WITH KEY name = 'key'.
+   CHECK sy-subrc = 0.
+   zclpt_util=>json_to_data( EXPORTING input = <fs_key_tab>-value IMPORTING output = lt_key ).
+*"----------------------------------------------------------------------
+*" 2.Key Filter
+*"----------------------------------------------------------------------
+  LOOP AT lt_key ASSIGNING FIELD-SYMBOL(<fs_key>) .
+     CASE <fs_key>-name.
+       WHEN 'viewid'.  lv_viewid = <fs_key>-value.
+       WHEN 'mode'.    lv_mode   = <fs_key>-value.
+       WHEN 'mode2'.   lv_mode2  = <fs_key>-value.
+       WHEN 'gubun2'.  lv_gubun2 = <fs_key>-value.
+       WHEN 'veran'.   lv_veran  = <fs_key>-value.
+       WHEN 'po_no'.
+         lv_pono   = <fs_key>-value.
+         CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+           EXPORTING
+             input  = lv_pono
+           IMPORTING
+             output = lv_pono.
+       WHEN 'aworker1'.      ls_worker-aworker1      = <fs_key>-value.
+       WHEN 'aworker2'.      ls_worker-aworker2      = <fs_key>-value.
+       WHEN 'aworker3'.      ls_worker-aworker3      = <fs_key>-value.
+       WHEN 'aworker4'.      ls_worker-aworker4      = <fs_key>-value.
+       WHEN 'aworker5'.      ls_worker-aworker5      = <fs_key>-value.
+       WHEN 'aworker_name1'. ls_worker-aworker_name1 = <fs_key>-value.
+       WHEN 'aworker_name2'. ls_worker-aworker_name2 = <fs_key>-value.
+       WHEN 'aworker_name3'. ls_worker-aworker_name3 = <fs_key>-value.
+       WHEN 'aworker_name4'. ls_worker-aworker_name4 = <fs_key>-value.
+       WHEN 'aworker_name5'. ls_worker-aworker_name5 = <fs_key>-value.
+       WHEN 'ls_worker'.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_key>-value IMPORTING output = ls_worker ).
+     ENDCASE.
+   ENDLOOP.
+*"----------------------------------------------------------------------
+*" 3.Read Data
+*" -IV_VIEWID (V01020:가공 작업실적 등록,
+*"             V01021:가공 일괄 작업실적 등록,
+*"             V02020:성능시험 실적 등록,
+*"             V02021:성능(입회검사) 일괄 실적 등록,
+*"             V03010:오더별 자재현황 조회,
+*"             V05020:도장 실적 등록,
+*"             V06020:포장 실적 등록,
+*"             V06021:포장 일괄 작업실적 등록,
+*"             V08020:조립 작업실적 등록,
+*"             V08021:조립 일괄 작업실적 등록,
+*"             V30030:유압 조립 생산현황,
+*"             V31030:유압 성능 현황,
+*"             V32030:현수 조립 현황,
+*"             V33030:현수/전장 성능 생산현황,
+*"             V34030:연료 성능 생산현황,
+*"             V35030:발사대 조립 생산현황,
+*"             V36030:발사대/유도무기 성능 생산현황,
+*"             V37030:유도무기/연료 조립현황,
+*"             V38030:서보밸브 조립 현황,
+*"             V39030:서보밸브 종합 현황,
+*"             V40030:방산 종합 생산현황,
+*"             V41030:공정 이상 현황,
+*"             V42030:생산 대기 현황,
+*"             PP710 :Pages Slide)
+*"----------------------------------------------------------------------
+ CASE lv_viewid.
+     WHEN 'V01020' OR 'V01021' OR 'V02020' OR 'V02021' OR 'V05020' OR 'V06020' OR 'V06021' OR 'V08020' OR 'V08021'.
+** lv_mode   (1:조립, 2:조립일괄, 3:성능, 4:도장, 5:포장, 6:가공, 7:성능일괄 자검외, 8:가공일괄 종료, 9:가공일괄 시작)
+** lv_gubun2 (S:시작, F:종료)
+       CLEAR lv_type. CLEAR lv_msg.
+       IF lv_gubun2 <> 'F'.
+         CALL FUNCTION 'ZPP_MMS_RFC_03'
+           EXPORTING
+             i_gubun   = lv_mode
+             i_gubun2  = lv_gubun2
+             i_pono    = lv_pono
+           IMPORTING
+             e_type    = lv_type
+             e_message = lv_msg
+           TABLES
+             ot_head   = lt_5603
+             ot_item   = lt_5604.
+       ELSE.
+         CALL FUNCTION 'ZPP_MMS_RFC_04'
+           EXPORTING
+             i_gubun   = lv_mode
+             i_pono    = lv_pono
+             i_gubun2  = lv_gubun2
+             i_worker  = ls_worker
+           IMPORTING
+             e_type    = lv_type
+             e_message = lv_msg
+           TABLES
+             ot_head   = lt_5603
+             ot_item   = lt_5604.
+       ENDIF.
+
+       IF sy-subrc = 0.
+         LOOP AT lt_5603 ASSIGNING FIELD-SYMBOL(<fs_5603>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5603>-po_no
+             IMPORTING
+               output = <fs_5603>-po_no.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5603>-vornr
+             IMPORTING
+               output = <fs_5603>-vornr.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5603>-matnr
+             IMPORTING
+               output = <fs_5603>-matnr.
+         ENDLOOP.
+
+         LOOP AT lt_5604 ASSIGNING FIELD-SYMBOL(<fs_5604>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5604>-po_no
+             IMPORTING
+               output = <fs_5604>-po_no.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5604>-vornr
+             IMPORTING
+               output = <fs_5604>-vornr.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5604>-matnr
+             IMPORTING
+               output = <fs_5604>-matnr.
+         ENDLOOP.
+
+         lt_head-item1[] = lt_5603[].
+         lt_item-item1[] = lt_5604[].
+       ENDIF.
+
+       lt_head-result-type    = lv_type.
+       lt_head-result-message = lv_msg.
+
+
+     WHEN 'V03010'.
+       CLEAR lv_type. CLEAR lv_msg.
+       SELECT po_no, matnr, maktx, zzkr_item_name
+         FROM zppt5601
+        WHERE po_no = @lv_pono
+        ORDER BY PRIMARY KEY
+         INTO CORRESPONDING FIELDS OF @lt_5601.
+         EXIT.
+       ENDSELECT.
+
+       IF sy-subrc = 0.
+         CALL FUNCTION 'ZPP_MMS_RFC_02'
+           EXPORTING
+             iv_aufnr  = lv_pono
+           IMPORTING
+             es_return = ls_result
+             et_info   = lt_5602.
+
+         IF ls_result-type <> 'E'.
+           ASSIGN lt_5601 TO FIELD-SYMBOL(<fs_5601>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-po_no
+             IMPORTING
+               output = <fs_5601>-po_no.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-matnr
+             IMPORTING
+               output = <fs_5601>-matnr.
+
+           APPEND lt_5601 TO lt_head-item2.
+
+           LOOP AT lt_5602 ASSIGNING FIELD-SYMBOL(<fs_5602>).
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_5602>-po_no
+               IMPORTING
+                 output = <fs_5602>-po_no.
+
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_5602>-matnr
+               IMPORTING
+                 output = <fs_5602>-matnr.
+           ENDLOOP.
+           lt_item-item2[] = lt_5602[].
+
+         ENDIF.
+         lt_head-result-type    = ls_result-type.
+         lt_head-result-message = ls_result-message.
+
+       ELSE.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = '생산 오더 오류'.
+       ENDIF.
+
+    WHEN 'V30030' OR 'V32030' OR 'V35030' OR 'V37030' OR 'V38030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_01'
+         EXPORTING
+           i_mode     = lv_mode2
+         TABLES
+           et_info    = lt_7001  "현황판 내역
+          et_content = lt_1841. "전달사항 내역
+
+      IF sy-subrc = 0.
+         lt_head-item3[] = lt_1841[].
+         lt_item-item3[] = lt_7001[].
+       ELSE.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = 'error'.
+       ENDIF.
+    WHEN 'V31030' OR 'V33030' OR 'V34030' OR 'V36030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_02'
+         EXPORTING
+           i_mode     = lv_mode2
+         TABLES
+           et_info    = lt_7002  "현황판 내역
+          et_content = lt_1841. "전달사항 내역
+
+      IF sy-subrc = 0.
+         lt_head-item3[] = lt_1841[].
+         lt_item-item6[] = lt_7002[].
+       ELSE.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = 'error'.
+       ENDIF.
+
+
+     WHEN 'V39030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_03'
+         EXPORTING
+           i_mode     = lv_mode2
+         TABLES
+           et_info    = lt_7003  "현황판 내역
+          et_content = lt_1841. "전달사항 내역
+
+      IF sy-subrc = 0.
+         lt_head-item3[] = lt_1841[].
+         lt_item-item7[] = lt_7003[].
+       ELSE.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = 'error'.
+       ENDIF.
+
+
+     WHEN 'V40030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_04'
+         EXPORTING
+           i_mode     = lv_mode2
+         TABLES
+           et_info1   = lt_7004_a  "조립라인
+          et_info2   = lt_7004_t  "성능라인
+          et_content = lt_1841.   "전달사항 내역
+
+      IF sy-subrc = 0.
+         lt_head-item3[] = lt_1841[].
+         lt_item-item8[] = lt_7004_a[].
+         lt_item-item9[] = lt_7004_t[].
+       ELSE.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = 'error'.
+       ENDIF.
+
+
+     WHEN 'V41030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_31'
+         EXPORTING
+           i_mode     = lv_mode2
+           i_veran    = lv_veran
+         IMPORTING
+           es_return  = ls_result
+         TABLES
+           et_data    = lt_0270  "현황판 내역
+          et_content = lt_1841. "전달사항 내역
+
+      IF sy-subrc = 0.
+         LOOP AT lt_0270 ASSIGNING  FIELD-SYMBOL(<fs_0270>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_0270>-po_no
+             IMPORTING
+               output = <fs_0270>-po_no.
+         ENDLOOP.
+
+         lt_head-item3[] = lt_1841[].
+         lt_item-item4[] = lt_0270[].
+       ELSE.
+         lt_head-result-type    = ls_result-type.
+         lt_head-result-message = ls_result-message.
+       ENDIF.
+
+
+     WHEN 'V42030'.
+       CALL FUNCTION 'ZPP_MMS_RFC_700_32'
+         EXPORTING
+           i_mode     = lv_mode2
+           i_veran    = lv_veran
+         IMPORTING
+           es_return  = ls_result
+         TABLES
+           et_data    = lt_0290  "현황판 내역
+          et_content = lt_1841. "전달사항 내역
+
+      IF sy-subrc = 0.
+         lt_head-item3[] = lt_1841[].
+         lt_item-item5[] = lt_0290[].
+       ELSE.
+         lt_head-result-type    = ls_result-type.
+         lt_head-result-message = ls_result-message.
+       ENDIF.
+
+
+     WHEN 'PP710'.
+       " SELECT SINGLE is possibly not unique 2019.09.16
+       SELECT *
+         INTO lt_head-comcode
+         FROM zcmt0011
+        WHERE spras     = sy-langu
+          AND zmodule   = 'PP'
+          AND zclass    = 'PP710'
+          AND zcm_code2 = lv_mode2
+         ORDER BY PRIMARY KEY.
+         EXIT.
+       ENDSELECT.
+       IF sy-subrc NE 0.
+         lt_head-result-type    = 'E'.
+         lt_head-result-message = 'No Code'.
+       ENDIF.
+
+   ENDCASE.
+*"----------------------------------------------------------------------
+*" 4.ABAP -> JSON
+*"----------------------------------------------------------------------
+  ls_entity-value1 = cl_fdt_json_serializer=>serialize(
+     data        = lt_head                    "#EC CI_FLDEXT_OK[2215424]
+     compress    = abap_true
+     pretty_name = cl_fdt_json_serializer=>pretty_mode-low_case
+   ).
+
+   ls_entity-value2 = cl_fdt_json_serializer=>serialize(
+     data        = lt_item                    "#EC CI_FLDEXT_OK[2215424]
+     compress    = abap_true
+     pretty_name = cl_fdt_json_serializer=>pretty_mode-low_case
+   ).
+
+   MOVE-CORRESPONDING ls_entity TO er_entity.
+
+ENDMETHOD.
