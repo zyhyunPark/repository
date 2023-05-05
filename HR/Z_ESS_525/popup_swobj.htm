@@ -1,0 +1,105 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>자녀 검색</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script>
+        var callBack = '<%=callBack%>';
+        var ET_SWOBJ = '<%=ET_SWOBJ%>';
+        var objId = '<%=objId%>';
+        var dataSource, grid;
+
+        $(document).ready(function() {
+            ET_SWOBJ = typeof ET_SWOBJ == 'object' ? ET_SWOBJ : $.parseJSON(ET_SWOBJ);
+            setGrid();
+        });
+
+        function setGrid() {
+            var dataSource = new kendo.data.DataSource({
+                type: "json",
+                data: ET_SWOBJ,
+                schema: {
+                    model: {
+                        fields: {
+                            birdt: {type: "string"},
+                            brnam: {type: "string"},
+                            stext: {type: "string"},
+                            swobj: {type: "string"}
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                selectable: true,
+                change: onChange,
+                columns: [
+                    { field: "stext", title: "관계", width: 80},
+                    { field: "brnam", title: "성명", width: 80,
+                        attributes: {
+                            class: "test-class",
+                            style: "text-decoration: underline; cursor: Pointer;"
+                        }
+                    },
+                    { field: "birdt", title: "생년월일", width: 120}
+                ]
+            }).data("kendoGrid");
+            // 그리드 데이터 없을때
+            grid.bind("dataBound", function(e) {
+                var msg = "일치하는 대상자가  없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns.length;
+                    $(e.sender.wrapper)
+                        .find('tbody')
+                        .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                }
+            });
+        }
+
+        function onChange(arg) {
+            var selectRows = this.select();
+            var rowData = this.dataItem(selectRows);
+
+            callFunc(rowData);
+        }
+
+        function callFunc(rowData) {
+            if (callBack != '') {
+                callBackFunc(window.opener, callBack, [rowData, objId]);
+            } else {
+                alert("empty callBack");
+            }
+
+            self.close();
+        }
+    </script>
+</head>
+<body>
+<section id="popup_wrap">
+
+   <!-- title -->
+   <h1>자녀 검색</h1>
+   <!-- //title -->
+
+   <!-- button -->
+   <a href="javascript:window.close()" class="btn_close" title="닫기">닫기</a>
+   <!-- //button -->
+
+   <!-- container -->
+   <article id="container">
+        <!-- tree -->
+        <div id="pView" class="list_sub">
+          <div id="grid" style="height: 300px"></div>
+        </div>
+        <!-- //tree -->
+   </article>
+   <!-- //container -->
+
+</section>
+
+</body>
+</html>
