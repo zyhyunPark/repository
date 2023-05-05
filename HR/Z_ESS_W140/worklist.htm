@@ -1,0 +1,308 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>근태포털</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script>
+        var workitemId = '<%=WORKITEM_ID%>';
+        var pageCmd = '';
+        var dataSource, grid;
+
+        $(document).ready(function() {
+            setButton();
+            setGrid();
+        });
+
+        function setButton() {
+            // 검색
+            $("#searchBtn").click(function() {
+                var zgubun = $("#zgubun option:selected").val();
+                grid.dataSource.read(getListData(zgubun));
+            });
+            // 조회
+            $("#showBtn").click(reqDisplay);
+            // 승인
+            $("#approveBtn").click(reqApprove);
+            // 반려
+            $("#rejectBtn").click(reqReject);
+            // 뒤로
+            $("#backBtn").click(function() {
+                sendForm("default.htm", {'WORKITEM_ID': workitemId});
+            });
+            // 닫기
+            $("#closeBtn").click(function() { top.window.close(); });
+        }
+
+        function setGrid() {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length",
+                    model: {
+                        fields: {
+                            //
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 600,
+                sortable: false,
+                resizable: true,
+                pageable: false,
+                navigatable: true,
+                columns: [
+                    { title: "<input type='checkbox' id='selectAll'>",template: "<input type='checkbox' class='checkbox'/>",  width: 30 },
+                    { field: "reqdt", title: "신청일",  width: 100, template: "#= reqdt == '00000000' ? '' : kendo.toString(kendo.parseDate(reqdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "appid", title: "신청No.",   width: 130},
+                    { field: "team_tx", title: "부서",      width: 100},
+                    { field: "pernrt", title: "사번", width: 100},
+                    { field: "hname", title: "성명",      width: 80},
+                    { field: "ttout", title: "직위",      width: 80},
+                    { field: "begda", title: "휴일근로일",  width: 100, template: "#= begda == '00000000' ? '' : kendo.toString(kendo.parseDate(begda, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "zreason", title: "휴일근로 사유"},
+                    { field: "zgubunt   ", title: "구분",      width: 80},
+                    { field: "ricon", title: "반려사유", width: 70, template:
+                        function(data){
+                            var btn="";
+                            if (data.rdesc == ""){
+                                btn = "<a href=\"#\" class=\"btn_desc ico_create \">반려사유입력</a>";
+                            } else {
+                                btn = "<a href=\"#\" class=\"btn_desc ico_docok\">내용보기</a>";
+                            }
+                            return btn;
+                        }
+                    },
+                    { field: "rdesc", title: "반려사유", width: 100, hidden: true}
+                ]
+            }).data("kendoGrid");
+
+            grid.bind("dataBound", function(e) {
+                var msg = "휴일근로 신청 내역이 없습니다.";
+                var grid = e.sender;
+                // 그리드 데이터 없을때
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns.length;
+                    $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                } else {
+                    // 그리드 멀티 선택
+                    grid.tbody.find("tr").css("cursor","pointer").bind("click", function() {
+                        $(this).find(".checkbox").trigger("click");
+                    });
+                    grid.tbody.find(".checkbox").bind("change", function (e) {
+                        $(e.target).closest("tr").toggleClass("k-state-selected");
+                        if ($(this).is(":checked")) {
+                            $(e.target).closest("tr").find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                        } else {
+                            $(e.target).closest("tr").find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                        }
+                    }).bind("click", function(e) {
+                        event.stopPropagation();
+                    });
+                }
+                // 전체 체크
+                grid.thead.find("#selectAll").prop("checked", false);
+                grid.thead.find("#selectAll").unbind("click");
+                grid.thead.find("#selectAll").bind("click", function() {
+                    if ($(this).is(":checked")) {
+                        grid.tbody.find(".checkbox").prop("checked", true);
+                        grid.tbody.find(".checkbox").closest("tr").addClass("k-state-selected");
+                        grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#dde6f2', 'color':'#000'});
+                    } else {
+                        grid.tbody.find(".checkbox").prop("checked", false);
+                        grid.tbody.find(".checkbox").closest("tr").removeClass("k-state-selected");
+                        grid.tbody.find(".checkbox").closest("tr").find("td").css({'background-color':'#ffffff', 'color':'#666'});
+                    }
+                });
+
+                grid.tbody.find("tr td").css("position","relative");
+                grid.tbody.find("td a.btn_desc").click(function() {
+                    openRejectReason('setRdesc');
+                });
+            });
+        }
+
+        function getListData(type) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PH_WF_GET_WORKLIST");
+            if(!type) { type=1; }  // 화면 초기화 시 요청 구분 '계획'으로 list 세팅
+            cfc.addParam('IV_ZGUBUN', type, false);
+            cfc.addParam('IS_INFO', {workitemid:workitemId}, true);
+            return cfc.getData();
+        }
+
+        function reqDisplay() {
+            var selectRows = grid.table.find(".k-state-selected");
+            var selectedData = [];
+            if (selectRows.length > 0) {
+                if (selectRows.length > 1) {
+                    alert("하나의 라인을 선택해 주시기 바랍니다.");
+                    return;
+                } else {
+                    var dataItem = grid.dataItem(selectRows);
+                    sendForm("default.htm", {'WORKITEM_ID': dataItem.workitemid,'PREV_ID': workitemId});
+                }
+            } else {
+                alert("라인을 선택해 주시기 바랍니다.");
+                return;
+            }
+        }
+
+        function reqApprove() {
+            var selectRows = grid.table.find(".k-state-selected");
+            var selectedData = [];
+            if (selectRows.length > 0) {
+                for (var i = 0; i < selectRows.length; i++) {
+                    selectedData.push(grid.dataItem(selectRows[i]));
+                }
+                reqBatch('A', selectedData);
+            } else {
+                alert("라인을 선택해 주시기 바랍니다.");
+                return;
+            }
+        }
+
+        function reqReject() {
+            var selectRows = grid.table.find(".k-state-selected");
+            var selectedData = [];
+            if (selectRows.length > 0) {
+                for (var i = 0; i < selectRows.length; i++) {
+                    selectedData.push(grid.dataItem(selectRows[i]));
+                }
+                reqBatch('R', selectedData);
+            } else {
+                alert("라인을 선택해 주시기 바랍니다.");
+                return;
+            }
+        }
+
+        function reqBatch(event, selectedData) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PH_WF_WORKLIST_AR");
+            cfc.addParam('IT_LIST', selectedData, true);
+            cfc.addParam('IV_EVENT', event, false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "json",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        if (event == 'A') {
+                            alert("승인 되었습니다.");
+                        }
+                        if (event == 'R') {
+                            alert("반려 되었습니다.");
+                        }
+                        grid.dataSource.read(getListData());
+                    } else if (data.ES_RESULT.subrc != "" && data.ES_RESULT.subrc != "0") {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function openRejectReason(callBack) {
+            var dataItem = grid.dataItem(grid.table.find("#grid_active_cell").closest("tr"));
+            sendFormPopup('../Z_ESS_021/popup_rdesc.htm','popupRejectDescription', {
+                        'callBack': callBack,
+                        'ename': dataItem.hname,
+                        'appid': dataItem.appid,
+                        'rdesc': dataItem.rdesc,
+                    }, 800, 250);
+        }
+
+        function setRdesc(item) {
+            var dataItem = grid.dataItem(grid.table.find("#grid_active_cell").closest("tr"));
+            dataItem.rdesc = item;
+            grid.refresh();
+        }
+    </script>
+    <style type="text/CSS">
+        .btn_desc{
+            position: absolute;
+            right: 45%;
+            top: 7px;
+        }
+    </style>
+</head>
+<body>
+<section id="popup_wrap">
+    <!-- title -->
+    <h1>휴일근로신청 신청내역</h1>
+    <!-- //title -->
+
+    <!-- button -->
+    <a href="javascript:top.window.close()" class="btn_close" title="닫기">Close</a>
+    <!-- //button -->
+
+    <!-- container -->
+    <article id="container">
+        <!-- search -->
+        <div class="search_box">
+            <table>
+                <colgroup>
+                    <col width="80" />
+                    <col width="*" />
+                </colgroup>
+                <tr>
+                    <th scope="row">구분</th>
+                    <td>
+                        <select id="zgubun">
+                            <option value="1">계획</option>
+                            <option value="2">실적</option>
+                        </select>
+                        <button type="button" id="searchBtn" class="btn_search">검색</button>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <!-- //search -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic" id="showBtn">조회</button>
+            <button type="button" class="btn_basic_b" id="approveBtn">승인</button>
+            <button type="button" class="btn_basic" id="rejectBtn">반려</button>
+            <button type="button" class="btn_basic" id="backBtn">뒤로</button>
+            <button type="button" class="btn_basic" id="closeBtn">닫기</button>
+        </div>
+        <!-- //button -->
+
+        <!-- grid -->
+        <div id="grid"></div>
+        <!-- //grid -->
+
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
