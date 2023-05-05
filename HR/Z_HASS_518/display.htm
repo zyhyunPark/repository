@@ -1,0 +1,408 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근무관리시스템 M Plan</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/BaseClass.js"></script>
+    <script src="../Z_ESS_021/js/CreateClass.js"></script>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var gData, gET_LINE1, gET_LINE2;
+        var csInfo = '<%=CS_INFO%>';
+        var pageCmd = '<%=FLAG%>';
+        var pernr = '';
+        var ivHass = '<%=HASS%>';
+        var cymd = moment('<%=sy-datum(8)%>','YYYYMMDD');
+        var display = false;
+        var ivDisyn;
+
+        $(document).ready(function() {
+            csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+            initDisplay();
+        });
+
+        function initDisplay() {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: getDisplayData(),
+                type: "POST",
+                success: setDisplay,
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function setDisplay(data) {
+            if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                gData = data;
+                // 2019.01.14 일부조직 ERP 결재선 변경
+                gET_LINE1 = data.ET_LINE1;
+                gET_LINE2 = data.ET_LINE2.concat(data.ET_LINE2_P);
+                setButton();
+                setForm(data);
+                setData(data);
+                setApprovalLine("ET_LINE1", gET_LINE1);
+                setApprovalLine("ET_LINE2", gET_LINE2);
+            } else {
+                alert(data.ES_RESULT.message);
+            }
+        }
+
+        function setButton() {
+            // 신청이력조회
+            $("#historyBtn").click(getHistory).show();
+            // 취소
+            if (pageCmd == 'C') {
+                $('#cancelBtn').click(reqCancel).show();
+            }
+            // 삭제
+            if (pageCmd == 'D') {
+                $('#deleteBtn').click(reqDelete).show();
+            }
+            // 이전화면
+            $("#backBtn").click(function() {
+                history.back();
+            });
+        }
+
+        function setForm(data) {
+            $("#reqdt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+            $("#begda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+            $("#endda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+            // dropdown 세팅
+            $("#absty").kendoDropDownList({
+                dataSource: [{value: data.CS_INFO.abstyt, key: data.CS_INFO.absty}],
+                dataTextField: "value",
+                dataValueField: "key"
+            });
+            $("#awart").kendoDropDownList({
+                dataSource: [{value: data.CS_INFO.awartt, key: data.CS_INFO.awart}],
+                dataTextField: "value",
+                dataValueField: "key"
+            });
+            // 휴무구분 '1'(연월차)일 경우 신청이력조회 비활성화
+            checkAbsty(data);
+
+            // 신청사원 검색버튼 비활성화
+            $("#srchPernrBtn").css('cursor', 'default');
+        }
+
+        function setData(data) {
+            // 신청일
+            $("#reqdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // 신청사원
+            $("#pernrt").val(data.CS_INFO.pernrt);
+            $("#pernm").text(csInfo.hname);
+            // 휴무기간
+            $("#begda").val(kendo.toString(kendo.parseDate(data.CS_INFO.begda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            $("#endda").val(kendo.toString(kendo.parseDate(data.CS_INFO.endda, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // 총가능일수
+            $("#ztotal").val(data.CS_INFO.ztotal.trim());
+            // 휴무일수
+            $("#zholi").val(data.CS_INFO.zholi.trim());
+            // 잔여일수
+            $("#zrest").val(data.CS_INFO.zrest.trim());
+            // 반려 사유
+            if (data.CS_INFO.wkfst == 'R') {
+                $("#wkfst").val(data.CS_INFO.wkfst);
+                $("#wkfstt").val(data.CS_INFO.wkfstt);
+                $("#rdesc").val(data.CS_INFO.rdesc_hisid);
+                $('.rejectReason').show();
+            }
+        }
+
+         function getDisplayData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_DISPLAY");
+            cfc.addParam('IV_PERNR', pernr, false);
+            cfc.addParam('IV_STDDT', cymd.format('YYYYMMDD'), false);
+            cfc.addParam('IV_HASS', ivHass, false);
+            cfc.addParam('CS_INFO', csInfo, true);
+
+            return cfc.getData();
+        }
+
+        function getHistory() {
+            sendFormPopup(
+                '../Z_ESS_524/popup_history.htm',
+                'popupReg',
+                {'IV_PERNR': csInfo.pernr, 'IV_AWART': $("#awart").val()},
+                450, 550
+            );
+        }
+
+        function checkAbsty(data) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_CHECK_ABSTY");
+            cfc.addParam('IV_AWART', data.CS_INFO.awart, false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    ivDisyn = data.EV_DISYN;
+                    if(ivDisyn == "N" || ivDisyn == "C") {
+                        $("#historyBtn").hide();
+                        $(".disyn_y").show();
+                        $('.disyn_n').attr('colspan', 'default');
+                        // 레거시 시스템에서 반차 오전/오후(ES_INFO.ZAMPM) 선택 된 경우 radio button visible
+                        if(gData.CS_INFO.awart == 'G020' && gData.CS_INFO.zampm == 'A') {           // 오전
+                            $(".zampm").show();
+                            $('#zampmRadio_a').attr('checked', true);
+                            $("#zampmRadio_a").css("cursor", "default");
+                            $("#zampmRadio_p").css("cursor", "default");
+                        } else if(gData.CS_INFO.awart == 'G020' && gData.CS_INFO.zampm == 'P') {    // 오후
+                            $(".zampm").show();
+                            $('#zampmRadio_p').attr('checked', true);
+                            $("#zampmRadio_a").css("cursor", "default");
+                            $("#zampmRadio_p").css("cursor", "default");
+                        } else {
+                            $(".zampm").hide();
+                        }
+                    } else {
+                        $("#historyBtn").show();
+                        $(".zampm").hide()
+                        $(".disyn_y").hide();
+                        $('.disyn_n').attr('colspan', 5);
+                    }
+
+                    if (ivDisyn == 'C'){
+                        $("#total_t").text('총가능시간');
+                        $("#holi_t").text('사용시간');
+                        $("#rest_t").text('잔여시간');
+                    } else {
+                        $("#total_t").text('총가능일수');
+                        $("#holi_t").text('사용일수');
+                        $("#rest_t").text('잔여일수');
+                    }
+                },
+                error: function () {
+                    alert("server error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function reqCancel() {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: getCancelData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        alert("취소 되었습니다.");
+                        sendForm("default.htm", {});
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("server error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function reqDelete() {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: getDeleteData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        alert("삭제 되었습니다.");
+                        sendForm("default.htm", {});
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("server error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+       function getCancelData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_CANCEL");
+            cfc.addParam('IV_APPID', csInfo.appid, false);
+            cfc.addParam('IS_LIST', csInfo, true);
+
+            return cfc.getData();
+        }
+        function getDeleteData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PL_DELETE");
+            cfc.addParam('IV_APPID', csInfo.appid, false);
+
+            return cfc.getData();
+        }
+    </script>
+</head>
+<body>
+<section id="container">
+    <div class="location">
+        <span class="home">Home</span>
+        <span>휴가/휴직</span>
+        <span>휴가</span>
+        <span>업무대행</span>
+        <strong>신청</strong>
+    </div>
+    <!-- contents -->
+    <article id="contents">
+        <!-- title -->
+        <h3>휴가/휴직</h3>
+        <!-- //title -->
+
+        <!-- title -->
+        <h4>휴가 / 업무대행 / 신청</h4>
+        <!-- //title -->
+
+        <!-- title -->
+        <h5>휴가신청 조회</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" class="btn_basic_b" id="cancelBtn" style="display: none;">취소</button>
+            <button type="button" class="btn_basic_b" id="deleteBtn" style="display: none;">삭제</button>
+            <button type="button" class="btn_basic" id="backBtn" >이전화면</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <div id="form_box" class="form_box">
+            <form id="approvalForm">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="10%"/>
+                        <col width="36%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                        <col width="10%"/>
+                        <col width="8%"/>
+                    </colgroup>
+                    <tr>
+                        <th>신청일 <span class="astro">*</span></th>
+                        <td colspan="7">
+                            <input id="reqdt" name="reqdt" type="text" disabled="ture" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>신청사원 <span class="astro">*</span></th>
+                        <td colspan="7">
+                            <input type="text" id="pernrt" name="pernrt" disabled="true" />
+                            <span id="pernm" style="margin-left: 10px;"></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">휴무기간 <span class="astro">*</span></th>
+                        <td colspan="7">
+                            <input id="begda" name="begda" type="text" class="datepicker" maxlength="10" disabled="ture" />
+                            ~
+                            <input id="endda" name="endda" type="text" class="datepicker" maxlength="10" disabled="ture" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>휴무유형 <span class="astro">*</span></th>
+                        <td>
+                            <select id="absty" disabled="true" style="width: 95px;"></select>
+                            <select id="awart" disabled="true"></select>
+                            <li class="zampm" style="display:none; display:inline-block;">
+                                <input type='radio' id='zampmRadio_a' value="A" disabled="true" />오전
+                                <input type='radio' id='zampmRadio_p' value="P" disabled="true" />오후
+                            </li>
+                            <button type="button" id="historyBtn" class="btn_basic_g" style="display:none; width: 100px; padding: 0;">신청이력조회</button>
+                        </td>
+                        <th scope="row" id="total_t" class="disyn_y" style="display: none;">총가능일수</th>
+                        <td class="disyn_y" style="display: none;">
+                            <input id="ztotal" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                        <th scope="row" id="holi_t">휴무일수</th>
+                        <td class="disyn_n">
+                            <input id="zholi" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                        <th scope="row" id="rest_t" class="disyn_y" style="display: none;">잔여일수</th>
+                        <td class="disyn_y" style="display: none;">
+                            <input id="zrest" type="text" class="w_datenum" disabled="ture" />
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        <!-- //form -->
+
+        <h5 class="rejectReason" style="display: none;">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none;">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" id="rdesc" class="k-textbox" readonly="readonly" style="width: 100%" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5 id="approve_area">결재라인</h5>
+        <!-- //title -->
+        <!-- approve -->
+        <div class="approve_box">
+            <div class="tb_box">
+                <!-- title -->
+                <h6>신청부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE1" class="mb_15"></div>
+            </div>
+            <div class="tb_box">
+                <!-- title -->
+                <h6>담당부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE2" class="mb_15"></div>
+            </div>
+        </div>
+        <!-- //approve -->
+    </article>
+    <!-- //contents -->
+</section>
+</body>
+</html>
