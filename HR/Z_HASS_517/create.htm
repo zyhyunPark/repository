@@ -1,0 +1,603 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근무관리시스템 M Plan</title>
+    <%@include file="../z_ess_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/BaseClass.js"></script>
+    <script src="../Z_ESS_021/js/CreateClass.js"></script>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var csInfo = '<%=CS_INFO%>';
+        var pageCmd = '<%=FLAG%>';
+        var zgubun = '<%=ZGUBUN%>';
+        var ivHass = '<%=HASS%>';
+        var dataItem, gET_LINE1, gET_LINE2;
+        var pernrt = '';
+
+        $(document).ready(function() {
+            if(pageCmd != ''){ csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo); }
+            setTitle(pageCmd);
+            setForm();
+            setButton();
+            initCreate('');
+        });
+
+        function setTitle(type) {
+            if (type == 'P') {
+                $(".zgubunTitle").text("계획신청");
+                $(".wkfst_p").show();
+                $(".wkfst_a").hide();
+            } else {
+                $(".zgubunTitle").text("실적신청");
+                $(".wkfst_a").show();
+                $(".wkfst_p").hide();
+            }
+        }
+
+        function setForm() {
+            // form setting
+            $("#reqdt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+            $("#begda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd",
+                min: kendo.date.today()         // 신청일 이후부터 searchBox 표시
+            });
+            $("#begda").attr("readonly", true); // 휴일근로일 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            $("#beguz").kendoTimePicker({
+                format: "HH:mm",
+                parseFormats: ["HH:mm"],
+                min: kendo.parseDate("06:00", "HH:mm"),
+                max: kendo.parseDate("13:00", "HH:mm"),
+                interval: 30,
+                readonly: false,        //키보드 입력 불가능(시계 아이콘으로 value 세팅)
+                change: function() {    // 휴일근로 종료 세팅 : 휴일근로 시작 + 9H(휴식시간 포함)
+                    var begTime = $("#beguz").data("kendoTimePicker").value();
+                    if(begTime) {
+                        begTime = new Date(begTime);
+                        begTime.setMinutes(begTime.getMinutes() + 540);
+                        $("#enduz").data("kendoTimePicker").value(begTime, "HH:mm");
+                    }
+                }
+            });
+            $("#enduz").kendoTimePicker({
+                format: "HH:mm",
+                parseFormats: ["HH:mm"]
+            });
+
+            // default value setting
+            if(!csInfo.hland)    $("#hland_1").attr("checked", true);       // 휴일근무지 - 국내(1)
+            if(!csInfo.zmeal)    $("#zmeal_N").attr("checked", true);       // 식사 이용유무 - 무(N)
+            if(!csInfo.zbus)     $("#zbus_N").attr("checked", true);        // 통근버스 이용유무 - 무(N)
+            if(!csInfo.zbusstop) $("#zbusstop_01").attr("checked", true);   // 버스탑승 지역 - 이천(01)
+
+            // checkbox change event
+            $("input:radio[name=hland]").click(function() { // 휴일근무지 변경 시 결재라인 재조회
+                if($("#pernrt").val()) {                    // 휴일근무지 변경될 때마다 결재라인 재조회
+                    initCreate('', $("#pernrt").val());
+                }
+
+                if($("#hland_2").is(':checked')) {          // 휴일근무지 해외일 경우 휴일근로 시간 08:00 ~ 17:00 세팅 및 비활성화
+                    $('#beguz').data('kendoTimePicker').enable(false);
+                    $('#beguz').data('kendoTimePicker').value("08:00", "HH:mm");
+                    $('#enduz').data('kendoTimePicker').value("17:00", "HH:mm");
+                    $("#tbody_z1700").hide();               // 진천공장 사용 field 비활성화
+                } else {
+                    $('#beguz').data('kendoTimePicker').enable(true);
+                    if(csInfo.z1700)  $("#tbody_z1700").show();
+                }
+            });
+
+            $("input:radio[name=zmeal]").click(function() { // 식사 이용유무 변경 시 조식/중식 checkbox visible
+                if($("#zmeal_Y").is(':checked')) {
+                    $("#zmeal_BL").show();
+                } else {
+                    $("#zmeal_BL").hide();
+                }
+            });
+
+            $("input:radio[name=zbus]").click(function() {  // 통근버스 이용유무 변경 시 도시명 radiobutton visible & 탑승정류장 disable false
+                if($("#zbus_Y").is(':checked')) {
+                    $("#zbus_city").show();
+                    $(".zbusdept").show();
+                    $(".zbus").attr('colspan', 1);
+                } else {
+                    $(".zbusdept").hide();
+                    $(".zbus").attr('colspan', 3);
+                    $("#zbus_city").hide();
+                    $('#zbusdept').val("");
+                }
+            });
+
+            // 계획(승인) -> 실적신청인 경우 & 실적(취소, 반려) -> 재상신인 경우
+            // field 비활성화(신청일, 휴일근로일, 휴일근무지, 휴일근로 시간, 휴일근로 사유) 2019.03.19
+            if(pageCmd == 'A' || (pageCmd == 'X' && zgubun == 2) ) {
+                $("#begda").data("kendoDatePicker").enable(false);
+                $("input:radio[name=hland]").attr('disabled', true);
+                $("#beguz").data('kendoTimePicker').enable(false);
+                $("#enduz").data('kendoTimePicker').enable(false);
+                $("#zreason").closest('input:text').prop('disabled', true);
+                $("input:radio[name=zmeal]").attr('disabled', true);
+                $("input:checkbox[id=zmeal_B]").attr('disabled', true);
+                $("input:checkbox[id=zmeal_L]").attr('disabled', true);
+                $("input:radio[name=zbus]").attr('disabled', true);
+                $("input:radio[name=zbusstop]").attr('disabled', true);
+                $("#zbusdept").closest('input:text').prop('disabled', true);
+            }
+            //* 10월 오픈 예상 *//
+            // $("#refdt").kendoDatePicker({
+            //     culture: "ko-KR",
+            //     format: "yyyy.MM.dd"
+            //     // min: kendo.date.today() // 휴일근로일 +2일 이후부터 searchBox 표시
+            //     // max: kendo.date.today() // 휴일근로일 익월 말까지만 searchBox 표시
+            // });
+
+            // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            // $("#refdt").attr("readonly", true);
+            //* 10월 오픈 예상 *//
+        }
+
+        function setButton() {
+            // 신청사원 Button
+            $("#pernrt").keyup(function(e) {
+                if (!(e.keyCode >=37 && event.keyCode <= 40)) {
+                    var inputVal = $(this).val();
+                    $(this).val(inputVal.replace(/[^0-9]/gi,''));
+                }
+                if (e.keyCode == 13) $('#pernm').text(getEnameByPernr($(this).val()));
+            });
+
+            $("#srchPernrBtn").click(function() {
+                openSearchPernrtPopup('setPernr');
+            });
+            // 승인요청
+            $("#reqBtn").click(reqApprove).show();
+            // 이전화면
+            $("#backBtn").click(function() {
+                sendForm("default.htm", {});
+            });
+        }
+
+        function setData(data) {
+            dataItem = data.CS_INFO;
+            gET_LINE1 = data.ET_LINE1;
+            gET_LINE2 = data.ET_LINE2;
+            setApprovalLine("ET_LINE1", gET_LINE1); // 신청부서
+            setApprovalLine("ET_LINE2", gET_LINE2); // 담당부서
+
+            if(pageCmd == 'P') {
+                $("#stdaz").val(8); // 근무시간
+            } else {
+                $("#hland_"+data.CS_INFO.hland).attr('checked', true);      // 휴일근무지
+                $('#beguz').data('kendoTimePicker').value(data.CS_INFO.beguz.substring(0, 2) + ":" + data.CS_INFO.beguz.substring(2, 4), "HH:mm");  // 휴일근로 시작 시간
+                $('#enduz').data('kendoTimePicker').value(data.CS_INFO.enduz.substring(0, 2) + ":" + data.CS_INFO.enduz.substring(2, 4), "HH:mm");  // 휴일근로 종료 시간
+                $('#stdaz').val(data.CS_INFO.stdaz);                        // 근무 시간
+                $("#pernrt_a").val(data.CS_INFO.pernrt);                    // 신청사원 사번
+                $("#pernm").text(getEnameByPernr($('#pernrt_a').val()));    // 신청사원 이름
+            }
+            $("#reqdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd')); // 신청일
+            $("#begda").val(kendo.toString(kendo.parseDate(data.CS_INFO.begda, 'yyyyMMdd'), 'yyyy.MM.dd')); // 휴일근로일
+            $('#zreason').val(data.CS_INFO.zreason);    // 휴일근로 사유
+
+            if(data.CS_INFO.z1700) {                    // 진천공장 사용 field 활성화
+                if(data.CS_INFO.hland == 1) {
+                    $("#tbody_z1700").show();
+                } else {
+                    $("#tbody_z1700").hide();
+                }
+                $("#zmeal_"+data.CS_INFO.zmeal).attr('checked', true);      // 식사 이용유무
+                if($("#zmeal_Y").is(':checked')) $("#zmeal_BL").show();
+                $("#zmeal_"+data.CS_INFO.zmeal_b).attr('checked', true);    // 조식
+                $("#zmeal_"+data.CS_INFO.zmeal_l).attr('checked', true);    // 중식
+                $("#zbus_"+data.CS_INFO.zbus).attr('checked', true);        // 통근버스 이용유무
+                if($("#zbus_Y").is(':checked')) {
+                    $("#zbus_city").show();
+                    $(".zbusdept").show();
+                    $(".zbus").attr('colspan', 1);
+                    $("#zbusstop_"+data.CS_INFO.zbusstop).attr('checked', true);// 버스탑승 지역
+                    $("#zbusdept").val(data.CS_INFO.zbusdept);                  // 탑승정류장명
+                } else {
+                    $(".zbus").attr('colspan', 3);
+                    $(".zbusdept").hide();
+                }
+            }
+
+            if (data.CS_INFO.wkfst == 'R') {            // 반려 사유
+                $("#wkfst").val(data.CS_INFO.wkfst);
+                $("#wkfstt").val(data.CS_INFO.wkfstt);
+                $("#rdesc").val(data.CS_INFO.rdesc_hisid);
+                $('.rejectReason').show();
+            }
+
+            //* 10월 오픈 예상 *//
+            // 휴일대체일 field visible & 활성화
+            // if(data.CS_INFO.zzjik01) {
+            //     $(".refdt_user").show();
+            //     $("#refdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.refdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // }
+            //* 10월 오픈 예상 *//
+        }
+
+        function initCreate(type, pernr) {
+            if(pageCmd == 'P') {
+                // 계획신청
+                csInfo.pernr   = (pernr) ? pernr : '';
+                csInfo.begda   = $("#begda").val().replace(/\./g, '');
+                csInfo.hland   = $("input:radio[name=hland]:checked").val();
+                csInfo.zreason = replaceJsonChar($("#zreason").val());
+            } else {
+                // 실적신청, 재상신
+            }
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PH_CHECK_HASS_PERNR");
+            cfc.addParam('IV_FLAG', pageCmd, false);
+            cfc.addParam('CS_INFO', csInfo, true);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if(data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                        if(data.CS_INFO.z1700 && data.CS_INFO.hland == 1) { // 진천공장 사용 field 활성화
+                            $("#tbody_z1700").show();
+                        } else {
+                            $("#tbody_z1700").hide();
+                        }
+                        setData(data);
+                    } else if (data.ES_RESULT.subrc.trim() == "4") {
+                        alert(data.ES_RESULT.message.replace(/\\\\n/g, '\\n'));
+                        clearData();
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function reqApprove(){
+            // validation check
+            var isList = dataItem;
+            var isValid = true;
+
+            if($("#pernm").text() == "") {
+                alert('신청사원 값을 입력해 주시기 바랍니다.');
+                $("#pernrt").focus();
+                $("#pernrt_a").focus();
+                isValid = false;
+            } else if(pageCmd != 'P') {
+                isList.pernrt = $("#pernrt_a").val().replace(/\./g, '');
+            } else {
+                isList.pernrt = $("#pernrt").val().replace(/\./g, '');
+            }
+
+            $("#inputForm .required").not("span").each(function() {
+                if ($(this).val() == "" || $(this).val() == null) {
+                    alert( $(this).closest("td").prev().text().replace('*', '') + "값을 입력해 주시기 바랍니다." );
+                    $(this).focus();
+                    isValid = false;
+                    return isValid;
+                }
+            });
+
+            if($("input:radio[name=zmeal]:checked").val() == "Y" && ($("input:checkbox[id=zmeal_B]:checked").val() == undefined && $("input:checkbox[id=zmeal_L]:checked").val() == undefined)) {
+                alert('식사 이용 시 조식 또는 중식을 선택해 주시기 바랍니다.');
+                isValid = false;
+                return;
+            }
+
+            if($("input:radio[name=zbus]:checked").val() == "Y" && $("#zbusdept").val() == '') {
+                alert('탑승정류장 값을 입력해 주시기 바랍니다.');
+                isValid = false;
+                return;
+            }
+
+            if (!isValid) return;
+
+            isList.reqdt = $("#reqdt").val().replace(/\./g, '');
+            isList.begda = $("#begda").val().replace(/\./g, '');
+            isList.hland = $("input:radio[name=hland]:checked").val();
+            isList.beguz = $("#beguz").val().replace(":", '');
+            isList.enduz = $("#enduz").val().replace(":", '');
+            isList.stdaz = $("#stdaz").val();
+            isList.zreason = replaceJsonChar($("#zreason").val());
+            isList.zmeal    = $("input:radio[name=zmeal]:checked").val();
+            isList.zmeal_B  = (isList.zmeal == 'N')? '' : $("input:checkbox[id=zmeal_B]:checked").val();
+            isList.zmeal_L  = (isList.zmeal == 'N')? '' : $("input:checkbox[id=zmeal_L]:checked").val();
+            isList.zbus     = $("input:radio[name=zbus]:checked").val();
+            isList.zbusstop = (isList.zbus == 'N')? '' : $("input:radio[name=zbusstop]:checked").val();
+            isList.zbusdept = (isList.zbus == 'N')? '' : replaceJsonChar($("#zbusdept").val());
+
+            //* 10월 오픈 예상 *//
+            // if(isList.zzjik01) {                   // 과장이상일 경우 휴일대체일 field 체크
+            //     if($("#refdt").val() != "" ^ $("input:checkbox[id='refdt_check']").is(":checked")) {
+            //         isList.refdt = $("#refdt").val().replace(/\./g, '');
+            //         isList.confm = $("input:checkbox[id='refdt_check']").is(":checked") ? 'X' : '';
+            //     } else {
+            //         alert('휴일대체일을 확인해 주시기 바랍니다.');
+            //         return;
+            //     }
+            // }
+            //* 10월 오픈 예상 *//
+
+            // 승인요청
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PH_APPROVE");
+            if(pageCmd == 'X') { pageCmd = zgubun; }    // 재상신일 경우 요청상태 계획/실적 구분
+            cfc.addParam('IV_FLAG', pageCmd, false);
+            cfc.addParam('IV_HASS', ivHass, false);
+            cfc.addParam('IS_LIST', isList, true);
+            cfc.addParam('IT_LINE1', gET_LINE1, true);
+            if (gET_LINE2[0] != undefined) {
+                cfc.addParam('IT_LINE2', gET_LINE2, true);
+            } else {
+                cfc.addParam('IT_LINE2', '', false);
+            }
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        alert("승인 요청 되었습니다.");
+                        sendForm("default.htm", {});
+                    } else if (data.ES_RESULT.subrc != "" && data.ES_RESULT.subrc != "0") {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function setPernr(item) {
+             $("#pernrt").val(item.pernrt);
+             $("#pernm").text(item.ename);
+             initCreate('', item.pernrt);
+        }
+
+        function getEnameByPernr(pernrt){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_GET_ENAME_PERNR");
+            cfc.addParam('IV_PERNR', pernrt, false);
+            var data = callSyncData(cfc);
+
+            if (data.EV_MSG) {
+                alert(data.EV_MSG);
+                clearData();
+            }
+
+            if (data.EV_ENAME && pageCmd == 'P') {
+                initCreate('', pernrt);
+            }
+            return data.EV_ENAME;
+        }
+
+        function clearData() {
+            // data initialization
+            $("#pernrt").val('');
+            $('#pernm').text('');
+            $("#begda").val('');
+            $('#beguz').data('kendoTimePicker').value('');
+            $('#enduz').data('kendoTimePicker').value('');
+            $('#stdaz').val('');
+            $('#zreason').val('');
+            setApprovalLine("ET_LINE1", '');
+            setApprovalLine("ET_LINE2", '');
+        }
+    </script>
+</head>
+<body>
+<section id="container">
+    <div class="location">
+        <span class="home">Home</span>
+        <span>근무관리</span>
+        <span>휴일근로</span>
+        <span>업무대행</span>
+        <strong>신청</strong>
+    </div>
+    <!-- contents -->
+    <article id="contents">
+        <!-- title -->
+        <h3>근무관리</h3>
+        <!-- //title -->
+
+        <!-- title -->
+        <h4>휴일근로 / 업무대행 / <span class="zgubunTitle"></span></h4>
+        <!-- //title -->
+
+        <!-- title -->
+        <h5>휴일근로 신청</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <button type="button" id="reqBtn" class="btn_basic_b">승인요청</button>
+            <button type="button" id="backBtn" class="btn_basic">이전화면</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <div id="form_box" class="form_box">
+            <form id="inputForm">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="13%"/>
+                        <col width="50%"/>
+                        <col width="13%"/>
+                        <col width="24%"/>
+                    </colgroup>
+                    <tr>
+                        <th>신청일 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <input id="reqdt" class="required" name="reqdt" type="text" disabled="ture"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>신청사원 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <div class="text_box wkfst_p" style="display: none;">
+                                <input type="text" id="pernrt" name="pernrt" maxlength="8" />
+                                <a id="srchPernrBtn" class="ico_search" title="검색">검색</a>
+                            </div>
+                            <input class="wkfst_a" type="text" id="pernrt_a" name="pernrt" disabled="true" style="display: none;"/>
+                            <span id="pernm" style="margin-left: 10px;"></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>휴일근로일 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <input id="begda" name="begda" type="text" class="datepicker required" maxlength="8"/>
+                        </td>
+                    </tr>
+                    <!-- 10월 오픈 예상 --><!-- <tr class="refdt_user" style="display: none;">
+                        <th>휴일대체일</th>
+                        <td colspan="3">
+                            <input id="refdt" name="refdt" type="text" class="datepicker" maxlength="10"/>
+                            <span style="margin-left: 10px;">지정안함</span>
+                            <input id="refdt_check" type="checkbox" class="checkbox"/>
+                        </td>
+                    </tr> --><!--  // 10월 오픈 예상 -->
+                    <tr>
+                        <th>휴일근무지 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <input type="radio" id="hland_1" name="hland" value="1" class="k-radio required" />
+                            <label for="hland_1" class="k-radio-label"> 국내</label>
+                            <input type="radio" id="hland_2" name="hland" value="2" class="k-radio required" />
+                            <label for="hland_2" class="k-radio-label"> 해외</label>
+                            <span>&nbsp;&nbsp;※ 해외 휴일근로 기준은 현지 휴일 기준임 (현지 주말 및 공휴일)</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>휴일근로 시간 <span class="astro">*</span></th>
+                        <td>
+                            <input type="text" class="w_time required" id="beguz" style="width:70px" onkeydown="javascript:return false;">
+                            ~ <input type="text" class="w_time required" id="enduz" style="width:70px" disabled="true" onkeydown="javascript:return false;">
+                        </td>
+                        <th>근무 시간</th>
+                        <td>
+                            <input type="text" class="k-textbox" id="stdaz" style="width:54px" readonly="readonly">  H
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>휴일근로 사유 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <input id="zreason" name="zreason" type="text" class="all required" />
+                        </td>
+                    </tr>
+                    <tbody class="tbody_input" id="tbody_z1700" style="display:none;">
+                    <tr>
+                        <th>식사 이용유무 <span class="astro">*</span></th>
+                        <td colspan="3">
+                            <input type="radio" id="zmeal_N" name="zmeal" value="N" class="k-radio required" />
+                            <label for="zmeal_N" class="k-radio-label"> 무</label>
+                            <input type="radio" id="zmeal_Y" name="zmeal" value="Y" class="k-radio required" />
+                            <label for="zmeal_Y" class="k-radio-label"> 유</label>
+                            <label id="zmeal_BL" style="display: none;">
+                            (
+                                <input type="checkbox" id="zmeal_B" value="B" class="checkbox"> 조식
+                                <input type="checkbox" id="zmeal_L" value="L" class="checkbox"> 중식
+                            )
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>통근버스<br>이용유무 <span class="astro">*</span></th>
+                        <td class="zbus" colspan="3">
+                            <input type="radio" id="zbus_N" name="zbus" value="N" class="k-radio required" />
+                            <label for="zbus_N" class="k-radio-label"> 무</label>
+                            <input type="radio" id="zbus_Y" name="zbus" value="Y" class="k-radio required" />
+                            <label for="zbus_Y" class="k-radio-label"> 유</label>
+                            <label id="zbus_city" style="display: none;">
+                            (
+                                <input type="radio" id="zbusstop_01" name="zbusstop" value="01" class="k-radio required" />
+                                <label for="zbusstop_01" class="k-radio-label"> 이천</label>
+                                <input type="radio" id="zbusstop_02" name="zbusstop" value="02" class="k-radio required" />
+                                <label for="zbusstop_02" class="k-radio-label"> 청주</label>
+                                <input type="radio" id="zbusstop_03" name="zbusstop" value="03" class="k-radio required" />                        
+                                <label for="zbusstop_03" class="k-radio-label"> 오창</label>
+                                <input type="radio" id="zbusstop_04" name="zbusstop" value="04" class="k-radio required" />
+                                <label for="zbusstop_04" class="k-radio-label"> 진천</label>
+                            )
+                            </label>
+                        </td>
+                        <th style="vertical-align: middle; display: none;" class="zbusdept">탑승정류장명 <span class="astro">*</span></th>
+                        <td class="zbusdept" style="display: none;">
+                            <input id="zbusdept" name="zbusdept" type="text" style="width: 100px"/>
+                            <span>&nbsp;&nbsp;ex) 신하리</span>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+                <p>※ 사유를 정확하게 작성하지 않을 경우 반려 처리 됩니다.</p>
+                <p>※ 해외 휴일근로인 경우 해외 휴일내용을 사유에 포함하여 필수 기재 바랍니다.   ex) 러시아 3월 8일 여성의 날(국가공휴일)</p>
+                <!-- 10월 오픈 예상 --><!-- <p class="refdt_user" style="display: none;">※ 휴일대체 미사용시 별도 보상 無</p>
+                <p class="refdt_user" style="display: none;">※ 상기 지정하신 휴일대체일에는 PC가 오프되므로 신중하게 선택하여 주시고, 불가피하게 출근할 경우 출근일 전일까지 출근사유/대체일자 지정하여<br>&nbsp&nbsp&nbsp실장 전결 협조전 인사지원팀 송부 (사후 인정 X)</p> --><!-- // 10월 오픈 예상 -->
+            </form>
+        </div>
+        <!-- //form -->
+
+        <h5 class="rejectReason" style="display: none;">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none;">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" id="rdesc" class="k-textbox" readonly="readonly" style="width: 100%" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5 id="approve_area">결재라인</h5>
+        <!-- //title -->
+        <!-- approve -->
+        <div class="approve_box">
+            <div class="tb_box">
+                <!-- title -->
+                <h6>신청부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE1" class="mb_15"></div>
+            </div>
+            <div class="tb_box">
+                <!-- title -->
+                <h6>담당부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE2" class="mb_15"></div>
+            </div>
+        </div>
+        <!-- //approve -->
+    </article>
+    <!-- //contents -->
+
+    <!-- note box -->
+    <!-- <div class="note_box">
+    <pre>※ 휴일근로時 개인별 표준근무시간 08시~17시 또는 08시30분~17시 30분까지 근무합니다 (시차근무제는 09~18시까지 근무)</pre>
+    </div> -->
+    <!-- //note box -->
+</section>
+</body>
+</html>
