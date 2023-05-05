@@ -1,0 +1,236 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>부품별 단가변동이력조회</title>
+    <%@include file="../z_msp_100/inc_header.htm" %>
+    <style type="text/css">
+        /* 2019.01.10 even row background color 제거 */
+        .k-grid tr:nth-child(even){
+            background-color:#FFFFFF;
+        }
+    </style>
+    <script>
+        var matnr = '<%=IV_MATNR%>';
+        var cartp = '<%=IV_CARTP%>'
+        var div03 = '<%=IV_DIV03%>'
+        var sDt   = '<%=IV_SPMON_BF%>'
+        var eDt   = '<%=IV_SPMON_AF%>'
+        var tskno = '<%=IV_TSKNO%>';
+        var seqno = '<%=IV_SEQNO%>';
+        var seqnr = '<%=IV_SEQNR%>'
+        var smdiv = '<%=IV_SMDIV%>';
+        var acrsm = '<%=IV_ACRSM%>';
+        var idnrk_af ='<%=IV_IDNRK_AF%>';
+        var idnrk_bf ='<%=IV_IDNRK_BF%>';
+        var dataSource, grid;
+        var excel_file_name = "부품별 단가변동이력조회";
+
+
+        $(document).ready(function() {
+            // csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+            setGrid();
+        });
+
+        $(function() {
+          $("#excBtn").click(function(e){
+                if (grid.dataSource.total() > 0) {
+                    var xlsTpl = kendo.template($('#xlsTpl').html());
+                    $("#grid").html(xlsTpl({rows:grid.dataSource.data()}));
+
+                    var tab_text="";
+                    var tHtml = "";
+                    var textRange; var j=0;
+                    var eDiv = $("#grid");
+
+
+
+                    eDiv.find("table").attr("border" , 1);
+                    tHtml = eDiv.html();
+                    eDiv.find("table").removeAttr("border");
+
+                    tab_text = tHtml;
+                    tab_text = tab_text.replace(/<a[^>]*>|<\/a>/g, "");//remove if u want links in your table
+                    tab_text = tab_text.replace(/<img[^>]*>/gi,""); // remove if u want images in your table
+                    tab_text = tab_text.replace(/<input[^>]*>|<\/input>/gi, ""); // reomves input params
+
+                    var ua = window.navigator.userAgent;
+                    var msie = ua.indexOf("MSIE ");
+
+                    if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./))      // If Internet Explorer
+                    {
+                        txtArea1.document.open("txt/html","replace");
+                        txtArea1.document.write(tab_text);
+                        txtArea1.document.close();
+                        txtArea1.focus();
+                        sa = txtArea1.document.execCommand("SaveAs", true, excel_file_name + ".xls");
+                        return (sa);
+                    }
+                    else {                //other browser not tested on IE 11
+                        var a = document.createElement('a');
+                        a.href = 'data:application/vnd.ms-excel,' + encodeURIComponent(tab_text);
+                        a.download = excel_file_name + ".xls";
+                        a.click();
+                        e.preventDefault();
+                        //sa = window.open('data:application/vnd.ms-excel,' + encodeURIComponent(tab_text));
+                    }
+                } else {
+                    alert("내역이 없습니다.");
+                }
+            });
+        });
+
+        function setGrid() {
+            var dataSource = new kendo.data.DataSource({
+                type: "json",
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data: function(data) {
+                        return data.CT_LIST;
+                    },
+                    total: function(data) {
+                        return data.CT_LIST.length;
+                    },
+                    model: {
+                        fields: {
+
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 400,
+                resizable: true,
+                selectable: true,
+                columns: [
+                    { field: "spmon", title: "현재기준 ", width:80, template: "#= spmon == '' ? '' : kendo.toString(kendo.parseDate(spmon, 'yyyyMM'), 'yyyy.MM') #" },
+                    { field: "maktx", title: "품명", width: 100 },
+                    { field: "matnr", title: "품번", width:100 },
+                    { field: "idnrk", title: "구성품", width: 100 },
+                    { field: "maktc", title: "구성품명", width: 100 },
+                    { field: "lifnr", title: "업체코드", width: 80 },
+                    { field: "name1", title: "업체명", width: 110 },
+                    { field: "meinc", title: "단위", width: 50 },
+                    { field: "waers", title: "통화", width: 50 },
+                    { field: "netpr", title: "단가",attributes:{class:"nr-right"}, width: 60  },
+                    { field: "dcdnm_ty", title: "변동<br>사유",attributes:{class:"nr-right"}, width: 60  },
+                    { title: "결정사유", columns:[
+                        { field: "zrescd", title: "코드", width: 60 },
+                        { field: "pretx", title: "결정사유명", width: 110 },
+                        { field: "zreswr", title: "차액",attributes:{class:"nr-right"}, width: 60 }
+                    ]},
+                    { field: "apldt", title: "적용시점", width: 100, template: "#= apldt == '' ? '' : kendo.toString(kendo.parseDate(apldt, 'yyyyMMdd'), 'yyyy.MM.dd') #" },
+                    { field: "aprno", title: "품의번호", width: 110 }
+                ]
+            }).data("kendoGrid");
+            // 그리드 데이터 없을때
+            grid.bind("dataBound", function(e) {
+                var msg = "일치하는 데이터가 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    var colCount = grid.columns.length+2;
+                    $(e.sender.wrapper)
+                        .find('tbody')
+                        .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                }
+            });
+        }
+
+        function getListData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF205_43');
+            cfc.addParam('IV_CARTP', cartp, false);
+            cfc.addParam('IV_DIV03', div03, false);
+            cfc.addParam('IV_SPMON_BF', sDt, false);
+            cfc.addParam('IV_SPMON_AF', eDt, false);
+            cfc.addParam('IV_TSKNO', tskno, false);
+            cfc.addParam('IV_SEQNO', seqno, false);
+            cfc.addParam('IV_SEQNR', seqnr, false);
+            cfc.addParam('IV_MATNR', matnr, false);
+            cfc.addParam('IV_SMDIV', smdiv, false);
+            cfc.addParam('IV_ACRSM', acrsm.replace(',', ''), false);
+            cfc.addParam('IV_TEST', '', false);
+            cfc.addParam('IV_IDNRK_BF', idnrk_bf, false);
+            cfc.addParam('IV_IDNRK_AF', idnrk_af, false);
+            cfc.addParam('CT_LIST', '', false);
+            return cfc.getData();
+        }
+    </script>
+</head>
+<body>
+    <div class="popup">
+        <div>
+            <h2 class="pop-tit">부품별 단가변동이력조회</h2>
+        </div>
+        <div style="padding: 10px; float: right;">
+            <a id="excBtn" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+            <a id="excBtn" class="btn btn-blue" onclick="self.close();"><i class="fa fa-close"></i> 닫기</a>
+        </div>
+    </div>
+    <div class="row-bx">
+        <div id="grid"></div>
+            <iframe id="txtArea1" style="display: none"></iframe>
+        </div>
+    </div>
+</body>
+
+</html>
+<script type="text/x-kendo-template" id="xlsTpl">
+    <table class="list_sub" id="tb1">
+    <thead>
+        <tr>
+            <th rowspan="2">현재기준</th>
+            <th rowspan="2">품명</th>
+            <th rowspan="2">품번</th>
+            <th rowspan="2">구성품</th>
+            <th rowspan="2">구성품명</th>
+            <th rowspan="2">업체코드</th>
+            <th rowspan="2">업체명</th>
+            <th rowspan="2">단위</th>
+            <th rowspan="2">통화</th>
+            <th rowspan="2">단가</th>
+            <th rowspan="2">변동사유</th>
+            <th colspan="3">결정사유</th>
+            <th rowspan="2">적용시점</th>
+            <th rowspan="2">품의번호</th>
+        </tr>
+        <tr>
+            <th>코드</th>
+            <th>결정사유명</th>
+            <th>차액</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+           <td>#= rows[i].spmon #</td>
+           <td>#= rows[i].maktx #</td>
+           <td>#= rows[i].matnr #</td>
+           <td>#= rows[i].idnrk #</td>
+           <td>#= rows[i].maktc #</td>
+           <td>#= rows[i].lifnr #</td>
+           <td>#= rows[i].name1 #</td>
+           <td>#= rows[i].meinc #</td>
+           <td>#= rows[i].waers #</td>
+           <td>#= rows[i].netpr #</td>
+           <td>#= rows[i].dcdnm_ty #</td>
+           <td>#= rows[i].zrescd #</td>
+           <td>#= rows[i].pretx #</td>
+           <td>#= rows[i].zreswr #</td>
+           <td>#= rows[i].apldt #</td>
+           <td>#= rows[i].aprno #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
