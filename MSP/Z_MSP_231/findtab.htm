@@ -1,0 +1,286 @@
+<%@page language="ABAP" %>
+<div class="tabmain">
+    <script>
+        var dataSource, grid, sheetData, sDt;
+
+        $().ready(function() {
+            setForm();
+            setButton();
+            initCreate('');
+            /*container min-height remove*/
+            $('#container').css('min-height','0');
+        });
+
+        $.makeTab = function(obj) {
+            $("#sDt").val(currDate);
+            initCreate('S');
+        };
+
+// =============================================================================================================================================
+        function initCreate(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData(type),
+                type: "POST",
+                success: function(data) {
+                    setCreate(data,type);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function getCreateData(type) {              /* 변동종합현황 종합 */
+            sDt = $("#sDt").val().replace(/\./g, '');
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF231_01");
+            cfc.addParam('I_SPMON', sDt, false);
+            cfc.addParam('ET_LIST','',false);
+
+            return cfc.getData();
+        }
+
+        function setCreate(data,type) {
+            if(type == 'S'){
+                $("#grid").empty();
+            }
+            setGrid(data);
+            $("#gridCnt").text(data.ET_LIST.length);
+            //if(data.ET_LIST.length == 0) {
+            //    alert('일치하는 데이터가 없습니다.');
+            //}
+        }
+// =============================================================================================================================================
+        function setForm(){
+            $("#sDt").val(currDate);
+            $("#sDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM",
+                start:"year",
+                depth:"year"
+            });
+        }
+
+        function setButton(){
+            $("#searchBtn").click(function(e){
+                initCreate('S');
+            });
+            // 엑셀
+            $("#excelBtn").click(function(e) {
+                var xlsTpl = kendo.template($('#xlsTpl').html());
+                var excelData = grid.dataSource.data();
+                $.makeExcel(xlsTpl, excelData, "판매가_재료비_변동종합현황");
+            });
+        }
+
+        function setGrid(data) {
+            var date = $("#sDt").val();
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 16,
+                data: data,
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length",
+                    model: {
+                        fields: {
+                        }
+                    }
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height:602,
+                scrollable:true,
+                resizable: true,
+                columns: [
+                    { field: "gubnm_02", title: "구분", width:128, locked:true},
+                    { field: "gubnm_03", title: "구분", width:130, locked:true, template: "#=total(gubun_03, gubnm_03) #"},
+                    { field: "matnr_cnt", title: "제품수", width:80, attributes:{style:"text-align:right"}},
+                    { title: "초도가", columns:[
+                        { field: "sop3m_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(sop3m_01) #"  },
+                        { field: "sop3m_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(sop3m_02) #" },
+                    ]},
+                    { title: "현재가 ("+date+")", columns:[
+                        { field: "ctprc_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(ctprc_01) #"  },
+                        { field: "ctprc_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(ctprc_02) #" },
+                    ]},
+                    { title: "변동금액 (현재가-초도가)", columns:[
+                        { field: "scamt_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scamt_01) #"  },
+                        { field: "scamt_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scamt_02) #" },
+                    ]},
+                    { title: "손익효과", columns:[
+                        { field: "scsmt", title: "이격액", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scsmt) #"  },
+                        { field: "scsrt", title: "이격률", width:100, attributes:{style:"text-align:right"}, template: "#= scsrt == '' ? '' : repStr(scsrt)+'%' #" },
+                        { field: "sc_stat", title: "상태", width:70, attributes:{style:"text-align:center"}, template: "#= setIcon(sc_stat) #" }
+                    ]}
+                ],
+
+                dataBound:function(e){
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.total() == 0) {
+                        var colCount = grid.columns.length+13;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                    } else{
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+
+                    // thead colspan
+                    $("#grid").find("th:eq(0)").hide();
+                    $("#grid").find("th:eq(1)").attr("colspan","2");
+                    $("#grid").find("th:eq(6)").css("border-bottom","0");
+                    $("#grid").find("tr:eq(2)").find("th:eq(7),th:eq(8)").css("border-top", "solid 1px #dddddd");
+
+
+                    // tbody total
+                    $('.total').parents('td').css("border-left", "solid 0px #f7f7f7");
+                    $('.total').parents('td').css("background-color", "#fafafa");
+
+                    var rows = e.sender.tbody.children();
+                    if(rows.length > 1) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var row = $(rows[j]);
+
+                            $("#grid").find("tr:eq("+j+")").find("td:eq(0)").css("border-left", "solid 1px #dddddd");
+
+                            var dataItem = e.sender.dataItem(row);
+                            var type = dataItem.get("gubun_03");
+
+                             if(type == "Total") $(".k-grid-content").find("tr:eq("+j+")").css("background-color","#fafafa");
+                        }
+                    }
+
+                    // tbody locked columns rowspan
+                    $("#grid").rowspan(0);
+                }
+            }).data("kendoGrid");
+
+        }
+
+         // function repStr(str){
+         //    if(str.indexOf('NC',0) != -1){
+         //        str = str.replace('NC', '가단가');
+         //        str = "<span style='color:red'>"+str+"</span>";
+         //    } else if(str.indexOf('CE',0) != -1) {
+         //        str = str.replace('CE', '현재가 누락');
+         //        str = "<span style='color:blue'>"+str+"</span>";
+         //    } else if(str.indexOf('-',0) != -1){
+         //        str = str.replace('-','▲');
+         //        //str = "<span style='color:red'>"+str+"</span>";
+         //        str = "<span>"+str+"</span>";
+         //    }
+         //    return str
+         //  }
+
+         // function setIcon(data) {           /* 상태별 아이콘 */
+         //    switch(data) {
+         //        case 'Y' :
+         //            return '<span style="color:yellow; font-size:20px;">'+ '●' +'</span>';
+         //        case 'G' :
+         //            return '<span style="color:green; font-size:20px;">'+ '●' +'</span>';
+         //        case 'R' :
+         //            return '<span style="color:red; font-size:20px;">'+ '●' +'</span>';
+         //        default  :
+         //            return '<span>'+data+'</span>';
+         //   }
+         // }
+
+         function total(id, name) {         /* total 계산 */
+           if(id.indexOf("Total") != -1) {
+                return '<span class=total>합계</span>';
+           } else {
+                return '<span>'+name+'</span>';
+           }
+          }
+
+    </script>
+
+    <div id="container" class="tabContainer" style="padding:0; min-width:1230px;">
+        <!-- 2018.11.01 IE 화면 사이즈 조절-->
+        <h2 class="h2-tit" style="margin-bottom: 10px;">판매가/재료비 변동 종합현황</h2>
+        <div class="hd-sch">
+            <div class="dis-in txKeep">
+                <span  class="tit-tx">현재기준</span>
+                <input type="text" id="sDt" style="width:150px;"/>
+            </div>
+            <div class="right" style="padding-right:20px;">
+                <a id="searchBtn" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                <a id="excelBtn" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+            </div>
+        </div>
+
+        <!--// 2018.11.08 message 추가 -->
+        <div class="hd-sch" style="padding:0 164px 0 0; margin-bottom:0px;">
+            <div class="dis-in txKeep">
+                <span style="font-weight:bold">
+                ※<span style="color:blue">현재가 누락</span>또는<span style="color:red">가단가</span>일 경우 합계 제외
+                </span>
+            </div>
+            <div class="right"style="padding-right:20px;">
+                <span style="text-align:right">[단위 : 천KRW]</span>
+            </div>
+        </div>
+
+        <div class="row-bx" style="padding:0px;">
+            <div id="grid"></div>
+        </div>
+        <div id="grid"></div>
+    </div>
+</div>
+
+<script type="text/x-kendo-template" id="xlsTpl">
+    <table class="list_sub">
+    <thead>
+        <tr>
+            <th rowspan="2" colspan="2">구분</th>
+            <th rowspan="2" >제품수</th>
+            <th colspan="2">초도가</th>
+            <th colspan="2">현재가 (#= sDt.substr(0,4)+"."+sDt.substr(4,6) #)</th>
+            <th colspan="2">변동금액 (현재가-초도가)</th>
+            <th colspan="2">손익효과</th>
+        </tr>
+        <tr>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>이격액</th>
+            <th>이격율</th>
+        </tr>
+    </thead>
+    <tbody>
+    # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+            <td style="text-align: center">#= rows[i].gubnm_02 #</td>
+            <td style="text-align: center">#= (rows[i].gubnm_03 == '') ? "합계" : rows[i].gubnm_03  #</td>
+            <td style="text-align: right">#= rows[i].matnr_cnt #</td>
+            <td style="text-align: right">#= rows[i].sop3m_01 #</td>
+            <td style="text-align: right">#= rows[i].sop3m_02 #</td>
+            <td style="text-align: right">#= rows[i].ctprc_01 #</td>
+            <td style="text-align: right">#= rows[i].ctprc_02 #</td>
+            <td style="text-align: right">#= rows[i].scamt_01 #</td>
+            <td style="text-align: right">#= rows[i].scamt_02 #</td>
+            <td style="text-align: right">#= rows[i].scsmt #</td>
+            <td style="text-align: right">#= rows[i].scsrt == '' ? '' : rows[i].scsrt +"%" #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
