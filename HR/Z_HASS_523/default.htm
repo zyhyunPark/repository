@@ -1,0 +1,340 @@
+    <%@page language="ABAP"%>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>근무관리시스템 M Plan</title>
+        <%@include file="../z_ess_021/inc_header.htm" %>
+        <script src="../Z_ESS_021/js/moment.js"></script>
+        <script>
+            var dataSource, grid;
+            var ivHass = 'X';
+            var ivPernr = '<%=IV_PERNR%>';
+            var pernr = '';
+            var cymd = moment('<%=sy-datum(6)%>','YYYYMM');
+
+            $(document).ready(function() {
+                $("#sDt").val(moment().startOf("year").format("YYYY.MM.DD"));
+                $("#eDt").val(moment().endOf("year").format("YYYY.MM.DD"));
+                setSearchBox();
+                setButton();
+                setGrid();
+            });
+
+             function setSearchBox() {
+                $("#sDt, #eDt").kendoDatePicker({
+                    culture: "ko-KR",
+                    format: "yyyy.MM.dd",
+                    min: new Date(cymd.format('YYYY'), 0, 1)
+                });
+
+                // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+                $("#sDt, #eDt").attr("readonly", true);
+
+                // 신청사원 value 세팅
+                if(!ivPernr || ivPernr != undefined) $("#pernrt").val(ivPernr);
+
+                // 검색
+                $("#searchBtn").click(function() {
+                    grid.dataSource.read(getListData());
+                });
+            }
+
+            function setButton() {
+                // 신청사원 field
+                $("#pernrt").keyup(function(e) {
+                    if (!(e.keyCode >=37 && event.keyCode <= 40)) {
+                        var inputVal = $(this).val();
+                        $(this).val(inputVal.replace(/[^0-9]/gi,''));
+                    }
+
+                    if (e.keyCode == 13) {
+                      if($(this).val()) {
+                            $('#pernm').text(getEnameByPernr($(this).val()));
+                        } else {
+                            alert("신청사원을 입력하세요.");
+                            return;
+                        }
+                    }
+                });
+
+                // 신청사원 검색 button
+                $("#srchPernrBtn").click(function() {
+                    openSearchPernrtPopup('setPernr');
+                });
+
+                // 조회
+                $("#showBtn").click(function() {
+                    var dataItem = grid.dataItem(grid.select());
+                    var flag = 'R';
+                    if (dataItem == null) {
+                        alert("라인을 선택해 주시기 바랍니다.");
+                    } else {
+                        sendForm("display.htm", {'FLAG': flag, 'CS_INFO': kendo.stringify(dataItem)});
+                    }
+                });
+
+                // 신청
+                $("#requestBtn").click(function() {
+                    var dataItem = grid.dataItem(grid.select());
+                    var flag = '';
+                    if(dataItem == null) {
+                        alert("라인을 선택해 주시기 바랍니다.");
+                    } else if (dataItem.wkfst != "") {
+                        alert("취소가능 건에 대해서만 신청 가능합니다.");
+                    } else {
+                        reqCheck(dataItem, flag);
+                    }
+                });
+
+                // 재상신
+                $("#reRequestBtn").click(function() {
+                    var dataItem = grid.dataItem(grid.select());
+                    var flag = 'X';
+                    if (dataItem == null) {
+                        alert("라인을 선택해 주시기 바랍니다.");
+                    } else if (!(dataItem.wkfst == "R" || dataItem.wkfst == "C")) {
+                        alert("결재반려되거나 결재취소한 건에 대해서만 재상신 가능합니다.");
+                    } else {
+                        reqCheck(dataItem, flag);
+                    }
+                });
+
+                // 취소
+                $("#cancelBtn").click(function() {
+                    var dataItem = grid.dataItem(grid.select());
+                    var flag = 'C';
+                    if (dataItem == null) {
+                        alert("라인을 선택해 주시기 바랍니다.");
+                    } else if (dataItem.wkfst != "Q") {
+                        alert("결재진행중이거나 결재승인 또는 결재반려된 경우 취소가 되지 않습니다.");
+                    } else {
+                        sendForm("display.htm", {'FLAG': flag,'CS_INFO': kendo.stringify(dataItem)});
+                    }
+                });
+
+                // 삭제
+                $("#deleteBtn").click(function() {
+                    var dataItem = grid.dataItem(grid.select());
+                    var flag = 'D';
+                    if (dataItem == null) {
+                        alert("라인을 선택해 주시기 바랍니다.");
+                    } else if (dataItem.wkfst != "C") {
+                        alert("결재취소한 건에 대해서만 신청리스트 상에서 삭제 가능합니다.");
+                    } else {
+                        sendForm("display.htm", {'FLAG': flag,'CS_INFO': kendo.stringify(dataItem)});
+                    }
+                });
+            }
+
+            function setGrid() {
+                dataSource = new kendo.data.DataSource({
+                    type: "json",
+                    pageSize: 10,
+                    transport: {
+                        read: {
+                            type: "POST",
+                            url: URL.callFunction,
+                            dataType: "jsonp",
+                            data: getListData()
+                        }
+                    },
+                    schema: {
+                        data: "ET_LIST",
+                        total: "ET_LIST.length",
+                        model: {
+                            fields: { }
+                        }
+                    }
+                });
+                grid = $("#grid").kendoGrid({
+                    dataSource: dataSource,
+                    autoBind: true,
+                    height: 430,
+                    sortable: false,
+                    resizable: true,
+                    pageable: true,
+                    navigatable: true,
+                    selectable: true,
+                    columns: [
+                        lineClick,
+                        { field: "reqdt", title: "신청일", width: 140, template: "#= reqdt == '00000000' ? '' : kendo.toString(kendo.parseDate(reqdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                        { field: "appid", title: "신청No.", width: 140},
+                        { field: "period", title: "휴가기간"},
+                        { field: "awartt", title: "휴무유형", width: 160},
+                        { field: "appdt", title: "승인일", width: 140, template: "#= appdt == '00000000' ? '' : kendo.toString(kendo.parseDate(appdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                        { field: "wkfstt", title: "상태", width: 110}
+                    ]
+                }).data("kendoGrid");
+                // 그리드 데이터 없을때
+                grid.bind("dataBound", function(e) {
+                    var msg = "휴가 신청내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.total() == 0) {
+                        $(e.sender.wrapper).find('tbody')
+                                .append('<tr class="kendo-data-row"><td colspan="' + grid.columns.length + '" class="no-data">' + msg + '</td></tr>');
+                    } else {
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+                });
+            }
+
+            function getListData() {
+                pernr = $("#pernrt").val();
+                var sDt = $("#sDt").val().replace(/\./g, '');
+                var eDt = $("#eDt").val().replace(/\./g, '');
+
+                var cfc = new CallFuncClass();
+                cfc.setFuncName("Z_HR_PLC_LIST_DATA");
+                cfc.addParam('IV_BEGDA', sDt, false);
+                cfc.addParam('IV_ENDDA', eDt, false);
+                cfc.addParam('IV_HASS', ivHass, false);
+                cfc.addParam('IV_PERNR', pernr, false);
+
+                return cfc.getData();
+            }
+
+            function reqCheck(dataItem, flag) {
+                $.ajax({
+                    url: URL.callFunction,
+                    dataType: "jsonp",
+                    data: getRequestData(dataItem, flag),
+                    type: "POST",
+                    success: function(data) {
+                        if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                            sendForm("create.htm", {'FLAG': flag,
+                                                    'CS_INFO': kendo.stringify(dataItem),
+                                                    'ET_LINE1': kendo.stringify(data.ET_LINE1),
+                                                    'ET_LINE2': kendo.stringify(data.ET_LINE2)
+                                                    }
+                                    );
+                        } else {
+                            alert(data.ES_RESULT.message);
+                        }
+                    },
+                    error: function () {
+                        alert("error");
+                    },
+                    beforeSend: function() {
+                        kendo.ui.progress($("#container"), true);
+                    },
+                    complete: function() {
+                        kendo.ui.progress($("#container"), false);
+                    }
+                });
+            }
+
+            function getRequestData(dataItem, flag) {
+                var cfc = new CallFuncClass();
+                cfc.setFuncName("Z_HR_PLC_GET_REQUEST");
+                cfc.addParam('IV_STDDT', cymd.format('YYYYMMDD'), false);
+                cfc.addParam('IV_HASS', ivHass, false);     // '': ESS  / 'X': HASS
+                cfc.addParam('IV_FLAG', flag, false);       // '': 신청 / 'X': 재상신
+                if (dataItem) {
+                    dataItem.pernr = pernr;
+                    cfc.addParam('IV_PERNR', pernr, false);
+                    cfc.addParam('CS_INFO', kendo.stringify(dataItem), true);
+                } else {
+                    cfc.addParam('CS_INFO', '', true);
+                }
+                return cfc.getData();
+            }
+
+            function setPernr(item) {
+                pernr = item.pernrt;
+                $("#pernrt").val(item.pernrt);
+                $("#pernm").text(item.ename);
+                setGrid();
+            }
+
+            function getEnameByPernr(pernrt, refresh){
+                var cfc = new CallFuncClass();
+                cfc.setFuncName("Z_HR_GET_ENAME_PERNR");
+                cfc.addParam('IV_PERNR', pernrt, false);
+                var data = callSyncData(cfc);
+                if (data.EV_PERNR_T) pernr = data.EV_PERNR_T;
+                if (data.EV_ENAME) setGrid();
+                if (data.EV_MSG) alert(data.EV_MSG);
+                return data.EV_ENAME;
+            }
+        </script>
+    </head>
+    <body>
+    <section id="container">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>휴가/휴직</span>
+            <span>휴가취소</span>
+            <span>업무대행</span>
+            <strong>신청</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>휴가/휴직</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>휴가취소 / 업무대행 / 신청</h4>
+            <!-- //title -->
+
+            <!-- search -->
+            <div class="search_box">
+                <table>
+                    <colgroup>
+                        <col width="10%" />
+                        <col width="280px" />
+                        <col width="10%" />
+                        <col width="*" />
+                        <col width="90px" />
+                    </colgroup>
+                    <tr>
+                        <th>조회기간</th>
+                        <td>
+                            <input type="text" id="sDt" maxlength="10" />
+                            ~
+                            <input type="text" id="eDt" maxlength="10" />
+                        </td>
+                        <th scope="row" style="width: 100px;">신청사원 <span class="astro">*</span></th>
+                        <td style="width: 180px;">
+                            <div class="text_box">
+                            <input type="text" id="pernrt" name="pernrt" maxlength="8" />
+                            <a id="srchPernrBtn" class="ico_search" title="검색">검색</a>
+                            </div>
+                            <span id="pernm" style="margin-left: 10px;"></span>
+                            <span id="pwtyp" style="margin-left: 10px;"></span>
+                        </td>
+                        <td>
+                            <button type="button" id="searchBtn" class="btn_search">검색</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- button -->
+            <div class="area_divide">
+                <div class="left" style="width: 55.5%;">
+                    <span>※ 당일 휴가계획은 본 시스템상으로 취소가 불가하며 인사지원팀으로 별도 문의 바랍니다.</span>
+                </div>
+
+                <div class="right" style="width: 40%;">
+                    <div class="btn_wrap">
+                        <button type="button" id="showBtn" class="btn_basic" >조회</button>
+                        <button type="button" id="requestBtn" class="btn_basic_b" >신청</button>
+                        <button type="button" id="reRequestBtn" class="btn_basic" >재상신</button>
+                        <button type="button" id="cancelBtn" class="btn_basic" >취소</button>
+                        <button type="button" id="deleteBtn" class="btn_basic" >삭제</button>
+                    </div>
+                </div>
+            </div>
+            <!-- //button -->
+
+            <!-- list -->
+            <div id="grid"></div>
+            <!-- //list -->
+        </article>
+        <!-- //contents -->
+
+    </section>
+    </body>
+    </html>
