@@ -1,0 +1,412 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근태포털</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+    <script>
+        var gData = null;
+        var offSource, offGrid, workGrid, planGrid, workSource, planSource;
+        var workitemId = '<%=WORKITEM_ID%>';
+        var prevId = '<%=PREV_ID%>';
+        var bReject = false;
+        var clicked = false;
+        var display = true;
+
+        $(document).ready(function() {
+            $("#closeBtn").click(function() { top.window.close() });
+            initDisplay();
+        });
+
+        function initDisplay() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_PH_WF_DISPLAY");
+            cfc.addParam('IV_WORKITEM', workitemId, false);
+            cfc.addParam('IV_FLAG', (display ? '' : 'X'), false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc == "0" || data.ES_RESULT.subrc == "") {
+                        setForm(data);
+                        setData(data);
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function setForm(data) {
+            $("#reqdt, #begda").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            $("ET_SUBTY1, #ET_SUBTY2, #ET_ATTTY, #ET_ABSTY").kendoDropDownList({
+                dataTextField: "value",
+                dataValueField: "key",
+                index: 0
+            });
+
+            //* 10월 오픈 예상 *//
+            // $("#refdt").kendoDatePicker({
+            //     culture: "ko-KR",
+            //     format: "yyyy.MM.dd"
+            // });
+            // if(data.ES_EMP.zzjik01) {             // 과장이상일 경우 휴일대체일 field 체크
+            //     $(".refdt_user").show();
+            //     $("#refdt_check").css('cursor', 'default');  // 지정안함 체크박스 비활성화
+            // }
+            //* 10월 오픈 예상 *//
+        }
+
+        function setData(data){
+            gData = data;
+            gET_LINE1 = data.ET_LINE1;
+            gET_LINE2 = data.ET_LINE2;
+            data.CS_INFO = data.ES_INFO;
+            setTitle(data.ES_INFO.zgubun);  // 화면제목
+            setEmpInfo(data.ES_EMP);        // 신청자 정보
+            setApprovalLine("ET_LINE1", data.ET_LINE1); // 신청부서
+            setApprovalLine("ET_LINE2", data.ET_LINE2); // 담당부서
+            $("#appid").val(data.CS_INFO.appid);    // appid
+            $("#reqdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd')); // 신청일
+            $("#begda").val(kendo.toString(kendo.parseDate(data.CS_INFO.begda, 'yyyyMMdd'), 'yyyy.MM.dd')); // 휴일근로일
+            $("#hland_"+data.CS_INFO.hland).attr('checked', true);  // 휴일근무지
+            $("#beguz").val(data.CS_INFO.beguz.substring(0, 2) + ":" + data.CS_INFO.beguz.substring(2, 4));  // 휴일근로 시작 시간
+            $('#enduz').val(data.CS_INFO.enduz.substring(0, 2) + ":" + data.CS_INFO.enduz.substring(2, 4));  // 휴일근로 종료 시간
+            $('#stdaz').val(data.CS_INFO.stdaz);        // 근무 시간
+            $('#zreason').val(data.CS_INFO.zreason);    // 휴일근로 사유
+            if(data.CS_INFO.z1700) {                    // 진천공장 사용 field 활성화
+                $("#tbody_z1700").show();
+                $("#zmeal_"+data.CS_INFO.zmeal).attr('checked', true);      // 식사 이용유무
+                if(data.CS_INFO.zmeal == 'Y') $("#zmeal_BL").show();
+                $("#zmeal_"+data.CS_INFO.zmeal_b).attr('checked', true);    // 조식
+                $("#zmeal_"+data.CS_INFO.zmeal_l).attr('checked', true);    // 중식
+                $("#zbus_"+data.CS_INFO.zbus).attr('checked', true);        // 통근버스 이용유무
+                if(data.CS_INFO.zbus == 'Y') {
+                    $("#zbus_city").show();
+                    $("#zbusstop_"+data.CS_INFO.zbusstop).attr('checked', true);// 버스탑승 지역
+                    $("#zbusdept").val(data.CS_INFO.zbusdept);                  // 탑승정류장명
+                } else {
+                    $(".zbus").attr('colspan', 3);
+                    $(".zbusdept").hide();
+                }
+            }
+            if (display && data.ES_INFO.rdesc != '') {  // 반려사유
+                $("#rdesc").val(data.ES_INFO.rdesc).attr("readonly", "readonly");
+                $(".rejectReason").show();
+            }
+            if (!display && data.ES_REASON.hisid != '' && data.ES_REASON.rdesc != '') { // 재상신
+                $("#es_reqdt").val(kendo.toString(kendo.parseDate(data.ES_REASON.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+                $("#es_rdesc").val(data.ES_REASON.rdesc);
+                $(".reRequest").show();
+            }
+
+            //* 10월 오픈 예상 *//
+            // 휴일대체일 & 휴일대체일_지정안함
+            // $("#refdt").val(kendo.toString(kendo.parseDate(data.CS_INFO.refdt, 'yyyyMMdd'), 'yyyy.MM.dd'));
+            // if(data.CS_INFO.confm) {
+            //     $("input:checkbox[id='refdt_check']").prop("checked", true);
+            // }
+            //* 10월 오픈 예상 *//
+        }
+
+        function setTitle(type) {
+            if (type == 1) {
+                $(".zgubunTitle").text("계획결재");
+            } else {
+                $(".zgubunTitle").text("실적결재");
+            }
+        }
+
+        function setEmpInfo(emp) {
+            $("#pernrt").val(emp.pernrt);   // 신청자 사번
+            $("#ename").val(emp.ename);     // 신청자 성명
+            $("#orgtx").val(emp.orgtx);     // 신청자 소속
+            $("#jikwi").val(emp.jikwi);     // 신청자 직위
+            $("#jikch").val(emp.jikch);     // 신청자 직책
+            $("#dat02").val(kendo.toString(kendo.parseDate(emp.dat02, 'yyyyMMdd'),'yyyy.MM.dd'));   // 신청자 그룹 입사일
+        }
+    </script>
+<!--[if lt IE 9]>
+<script type="text/javascript" src="js/html5shiv.js"></script>
+<![endif]-->
+</head>
+<body>
+
+<section id="popup_wrap2">
+
+    <!-- popupTitle -->
+    <div id="popup_header">
+        <header>
+           <!-- <h1>휴일근로 <span class='zgubunTitle'></span></h1> -->
+           <h1>휴일근로신청 신청내역</h1>
+           <a href="javascript:top.window.close()" class="btn_close" title="닫기">Close</a>
+        </header>
+    </div>
+    <!--// popupTitle -->
+
+    <!-- container -->
+    <article id="container">
+        <!-- title -->
+        <h5>휴일근로 신청</h5>
+        <!-- //title -->
+
+        <!-- button -->
+        <div class="btn_wrap">
+            <!-- <button type="button" class="btn_basic" id="backBtn" >뒤로</button> -->
+            <button type="button" class="btn_basic" id="closeBtn">닫기</button>
+        </div>
+        <!-- //button -->
+
+        <!-- form -->
+        <form id="approvalForm" onsubmit="return false;">
+        <div class="form_box">
+            <input type="hidden" id="pernr" name="pernr" />
+            <input type="hidden" id="appid" />
+            <table class="form_basic">
+                <colgroup>
+                    <col width="13%"/>
+                    <col width="50%"/>
+                    <col width="13%"/>
+                    <col width="24%"/>
+                </colgroup>
+                <tr>
+                    <th scope="row">신청일 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input id="reqdt" name="reqdt" type="text" disabled="ture"/>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">휴일근로일 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input id="begda" name="begda" type="text" disabled="ture"/>
+                    </td>
+                </tr>
+                <!-- 10월 오픈 예상 --><!-- <tr class="refdt_user" style="display: none;">
+                    <th>휴일대체일</th>
+                    <td colspan="3">
+                        <input id="refdt" name="refdt" type="text" disabled="ture"/>
+                        <span style="margin-left: 10px;">지정안함</span>
+                        <input id="refdt_check" type="checkbox" class="checkbox" disabled="ture"/>
+                    </td>
+                </tr> --><!--  // 10월 오픈 예상 -->
+                <tr>
+                    <th>휴일근무지 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input type="radio" id="hland_1" name="hland" value="1" class="k-radio required" disabled="true" />
+                        <label for="hland_1" class="k-radio-label"> 국내</label>
+                        <input type="radio" id="hland_2" name="hland" value="2" class="k-radio required" disabled="true" />
+                        <label for="hland_2" class="k-radio-label"> 해외</label>
+                        <span>&nbsp;&nbsp;※ 해외 휴일근로 기준은 현지 휴일 기준임 (현지 주말 및 공휴일)</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>휴일근로 시간 <span class="astro">*</span></th>
+                    <td>
+                        <input type="text" id="beguz" style="width:70px" disabled="true">
+                        ~ <input type="text" id="enduz" style="width:70px" disabled="true">
+                    </td>
+                    <th>근무 시간</th>
+                    <td>
+                        <input type="text" class="w_datenum" id="stdaz" style="width:54px" disabled="true">  H
+                    </td>
+                </tr>
+                <tr>
+                <tr>
+                    <th scope="row">휴일근로 사유 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input id="begda" name="begda" type="text" disabled="ture"/>
+                    </td>
+                </tr>
+                <!-- 10월 오픈 예상 --><!-- <tr class="refdt_user" style="display: none;">
+                    <th>휴일대체일</th>
+                    <td colspan="3">
+                        <input id="refdt" name="refdt" type="text" disabled="ture"/>
+                        <span style="margin-left: 10px;">지정안함</span>
+                        <input id="refdt_check" type="checkbox" class="checkbox" disabled="ture"/>
+                    </td>
+                </tr> --><!--  // 10월 오픈 예상 -->
+                <tr>
+                    <th>휴일근무지 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input type="radio" id="hland_1" name="hland" value="1" class="k-radio required" disabled="true" />
+                        <label for="hland_1" class="k-radio-label"> 국내</label>
+                        <input type="radio" id="hland_2" name="hland" value="2" class="k-radio required" disabled="true" />
+                        <label for="hland_2" class="k-radio-label"> 해외</label>
+                        <span>&nbsp;&nbsp;※ 해외 휴일근로 기준은 현지 휴일 기준임 (현지 주말 및 공휴일)</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>휴일근로 시간 <span class="astro">*</span></th>
+                    <td>
+                        <input type="text" id="beguz" style="width:70px" disabled="true">
+                        ~ <input type="text" id="enduz" style="width:70px" disabled="true">
+                    </td>
+                    <th>근무 시간</th>
+                    <td>
+                        <input type="text" class="w_datenum" id="stdaz" style="width:54px" disabled="true">  H
+                    </td>
+                </tr>
+                <tr>
+                <tr>
+                    <th scope="row">휴일근로 사유 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input id="zreason" name="zreason" type="text" class="all" disabled="ture"/>
+                    </td>
+                </tr>
+                <tbody class="tbody_input" id="tbody_z1700" style="display:none;">
+                <tr>
+                    <th>식사 이용유무 <span class="astro">*</span></th>
+                    <td colspan="3">
+                        <input type="radio" id="zmeal_N" name="zmeal" value="N" class="k-radio required" disabled="true"/>
+                        <label for="zmeal_N" class="k-radio-label"> 무</label>
+                        <input type="radio" id="zmeal_Y" name="zmeal" value="Y" class="k-radio required" disabled="true"/>
+                        <label for="zmeal_Y" class="k-radio-label"> 유</label>
+                        <label id="zmeal_BL" style="display: none;">
+                        (
+                            <input type="checkbox" id="zmeal_B" value="B" class="checkbox" disabled="true"> 조식
+                            <input type="checkbox" id="zmeal_L" value="L" class="checkbox" disabled="true"> 중식
+                        )
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th>통근버스<br>이용유무 <span class="astro">*</span></th>
+                    <td class="zbus">
+                        <input type="radio" id="zbus_N" name="zbus" value="N" class="k-radio required" disabled="true"/>
+                        <label for="zbus_N" class="k-radio-label"> 무</label>
+                        <input type="radio" id="zbus_Y" name="zbus" value="Y" class="k-radio required" disabled="true"/>
+                        <label for="zbus_Y" class="k-radio-label"> 유</label>
+                        <label id="zbus_city" style="display: none;">
+                        (
+                            <input type="radio" id="zbusstop_01" name="zbusstop" value="01" class="k-radio required" disabled="true"/>
+                            <label for="zbusstop_01" class="k-radio-label"> 이천</label>
+                            <input type="radio" id="zbusstop_02" name="zbusstop" value="02" class="k-radio required" disabled="true"/>
+                            <label for="zbusstop_02" class="k-radio-label"> 청주</label>
+                            <input type="radio" id="zbusstop_03" name="zbusstop" value="03" class="k-radio required" disabled="true"/>
+                            <label for="zbusstop_03" class="k-radio-label"> 오창</label>
+                            <input type="radio" id="zbusstop_04" name="zbusstop" value="04" class="k-radio required" disabled="true"/>
+                            <label for="zbusstop_04" class="k-radio-label"> 진천</label>
+                        )
+                        </label>
+                    </td>
+                    <th style="vertical-align: middle;" class="zbusdept">탑승정류장명<span class="astro">*</span></th>
+                    <td class="zbusdept" >
+                        <input id="zbusdept" name="zbusdept" type="text" style="width: 100px" disabled="true" />
+                        <span>&nbsp;&nbsp;ex) 신하리</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <!-- <p>※ 사유를 정확하게 작성하지 않을 경우 반려 처리 됩니다.</p> -->
+        </div>
+
+        <!-- title -->
+        <h5>신청자 정보</h5>
+        <!-- //title -->
+
+        <div class="form_box">
+            <table class="form_basic">
+                <colgroup>
+                    <col width="130">
+                    <col width="*">
+                    <col width="130">
+                    <col width="*">
+                    <col width="130">
+                    <col width="*">
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <th scope="row">사번</th>
+                        <td><input id="pernrt" name="pernrt" type="text" disabled="ture"/></td>
+                        <th scope="row">성명</th>
+                        <td><input id="ename" name="ename" type="text" disabled="ture" style="width: 100%" /></td>
+                        <th scope="row">소속</th>
+                        <td><input id="orgtx" name="orgtx" type="text" disabled="ture"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">직위</th>
+                        <td><input id="jikwi" name="jikwi" type="text" disabled="ture"/></td>
+                        <th scope="row">직책</th>
+                        <td><input id="jikch" name="jikch" type="text" disabled="ture"/></td>
+                        <th scope="row">그룹입사일</th>
+                        <td><input id="dat02" name="dat02" type="text" disabled="ture"/></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- //form -->
+
+        <!-- title -->
+        <h5 class="reRequest" style="display: none">재상신 정보</h5>
+        <!-- //title -->
+        <div class="form_box reRequest" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td>재상신 문건 <input id="es_reqdt" type="text" class="k-textbox" readonly="readonly" style="width:120px" /> 일자 반려건에 대한 재상신
+                </td>
+                </tr>
+                <tr>
+                    <td>반려사유 <input id="es_rdesc" type="text" class="k-textbox" readonly="readonly" style="width: 50%" /></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5 class="rejectReason" style="display: none">반려 사유</h5>
+        <!-- //title -->
+        <div class="form_box rejectReason" style="display: none">
+            <table class="form_basic">
+                <tr>
+                    <td><input type="text" class="all" id="rdesc" style="width: 100%" maxlength="255" disabled="ture"/></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- title -->
+        <h5>결재라인</h5>
+        <!-- //title -->
+
+        <!-- approve -->
+        <div class="approve_box">
+            <div class="tb_box">
+                <!-- title -->
+                <h6>신청부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE1" class="mb_15"></div>
+            </div>
+
+            <div class="tb_box">
+                <!-- title -->
+                <h6>담당부서</h6>
+                <!-- //title -->
+                <div id="ET_LINE2" class="mb_15"></div>
+            </div>
+        </div>
+        <!-- //approve -->
+        </form>
+        <!-- //form -->
+    </article>
+    <!-- //container -->
+
+</section>
+
+</body>
+</html>
