@@ -1,0 +1,469 @@
+<%@page language="ABAP" %>
+<div class="tabmain">
+    <script>
+        var dataSource2, grid2, sheetData2, sDt2;
+
+        $.makeTab2 = function(obj) {
+            if(obj != 'L') {
+                $("#sDt2").val(currDate);
+                initCreate2('S');
+            } else {
+                setForm2();
+                setButton2();
+                initCreate2('');
+            }
+        };
+// =============================================================================================================================================
+        function initCreate2(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData2(type),
+                type: "POST",
+                success: function(data) {
+                    setCreate2(data,type);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container2"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container2"), false);
+                }
+            });
+        }
+
+        function getCreateData2(type) {             /* 변동종합현황 종합(고객) */
+            sDt2 = $("#sDt2").val().replace(/\./g, '');
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF231_03");
+            cfc.addParam('I_SPMON', sDt2, false);
+            cfc.addParam('ET_LIST','',false);
+            return cfc.getData();
+        }
+
+        function setCreate2(data,type) {
+            if(type == 'S'){
+                $("#grid2").empty();
+            }
+            // setSheetData2(data);
+            setGrid2(data);
+            $("#gridCnt2").text(data.ET_LIST.length);
+            //if(data.ET_LIST.length == 0) {
+            //    alert('일치하는 데이터가 없습니다.');
+            //}
+        }
+// =============================================================================================================================================
+        function setForm2(){
+            $("#sDt2").val(currDate);
+            $("#sDt2").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM",
+                start:"year",
+                depth:"year"
+            });
+        }
+
+        function setButton2(){
+            $("#searchBtn2").click(function(e){
+                initCreate2('S');
+            });
+            // 엑셀
+            $("#excelBtn2").click(function(e) {
+                var xlsTpl = kendo.template($('#xlsTpl2').html());
+                var excelData = grid2.dataSource.data();
+                $.makeExcel(xlsTpl, excelData, "판매가_재료비_변동종합현황_고객별");
+            });
+        }
+
+        function setGrid2(data) {
+            var date = $("#sDt2").val();
+
+            dataSource2 = new kendo.data.DataSource({
+                type: "json",
+                data: data,
+                pageSize: 50,
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length",
+                    model: {
+                        fields: {
+                        }
+                    }
+                }
+            });
+
+            grid2 = $("#grid2").kendoGrid({
+                dataSource: dataSource2,
+                autoBind: true,
+                height:602,
+                selectable:true,
+                scrollable:true,
+                resizable: true,
+                pageable: false,
+                navigatable: true,
+                columns: [
+                    { field: "lcdiv_nm", title: "구분", width:85, locked:true, template: "#= total2(lcdiv, lcdiv_nm)#"},
+                    { field: "smdiv_nm", title: "구분", width:95, locked:true},  //판매가, 재료비, 재료비율
+                    { field: "matnr_cnt", title: "제품수", width:60, attributes:{style:"text-align:right"}},
+
+                    { title: "변동금액", columns:[
+                        { field: "sop3m", title: "초도가", width:90,  attributes:{style:"text-align:right"},template:"#= repStr(sop3m) #"},
+                        { field: "ctprc", title: "현재가<br>("+date+") ", width:90,attributes:{style:"text-align:right"}, template:"#= repStr(ctprc) #"},
+                        { field: "scamt", title: "현재가<br>-초도가", width:90,attributes:{style:"text-align:right"}, template: "#= repStr(scamt) #"}
+                    ]},
+                    { title: "손익효과", columns:[
+                        { field: "scsmt", title: "이격액 ", width:80, attributes:{class:"nr-right"}, template: "#= repStr(scsmt) #"  },
+                        { field: "scsrt", title: "이격률", width: 75, attributes:{style:"text-align:right"}, template: "#= scsrt == '' ? '' : repStr(scsrt)+'%' #" },
+                        { field: "sc_stat", title: "상태", width: 50, attributes:{style:"text-align:center"}, template: "#= setIcon(sc_stat) #" }
+                    ]},
+
+                    { title: "변동사유 ", columns:[                    
+                        { title: "사양", width:95, attributes:{style:"text-align:right"}, template:'<div class="chart21" style="height:100px"></div>'},
+                        { title: "구매가", width:95,attributes:{style:"text-align:right"}},
+                        { title: "원자재", width:95, attributes:{style:"text-align:right"}},
+                        { title: "약정 ", width:95,attributes:{style:"text-align:right"}},
+                        { title: "원가절감", width:95, attributes:{style:"text-align:right"}},
+                        { title: "환율", width:95,attributes:{style:"text-align:right"}},
+                        { title: "CKD", width:95,attributes:{style:"text-align:right"}},
+                        { title: "기타", width:95,attributes:{style:"text-align:right"}},
+                        { title: "합계", width:95,attributes:{style:"text-align:right"}, template:'<div class="chart22" style="height:100px"></div>'},
+                    ]}
+                ],
+
+                dataBound:function(e){
+
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.total() == 0) {
+                        var colCount = grid.columns.length+13;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                    }else{
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+
+                    // thead colspan
+                    $("#grid2").find("th:eq(0)").hide();
+                    $("#grid2").find("th:eq(1)").attr("colspan","2");
+                    $("#grid2").find("tr:eq(1)").find("th:eq(2),th:eq(3)").css("border-bottom", "0px");  // column line
+                    for(var i=1; i<15; i++) {
+                        if ( i == 1 || i == 2 || i == 3 || i == 14) continue;
+                        $("#grid2").find("tr:eq(2)").find("th:eq("+i+")").css("border-top", "1px solid #dddddd");
+                    }
+
+                    // variable define(bar chart)
+                    var data = [], totData = [];
+                    var chartData = [], chartData1 = [], chartValue = [];
+                    var totalData = [], totalData1 = [], totalValue = [];
+                    var aVal = [], bVal = [];
+
+                    // tobody total
+                    $('.total').parents('td').css("background-color", "#fafafa");
+                    var rows = e.sender.tbody.children();
+                    if(rows.length > 1) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var row = $(rows[j]);
+                            var item = e.sender.dataItem(row);
+                            var type = item.get("lcdiv");
+                            if(type == "Total") {
+                                $(".k-grid-content-locked").find("tr:eq("+j+")").css("background-color","#fafafa");  //column number
+                                $(".k-grid-content").find("tr:eq("+j+")").css("background-color","#fafafa");  //column number
+                            }
+                            //data get
+                            var data = [];
+                            for(var k=1; k<=7; k++) {
+                                var _x = item.get("acr0"+k);
+                                data.push(parseInt(_x));
+                            }
+                            //기타 data get
+                            data.push(parseInt(item.get("acr99")));
+
+                            //ckd, 기타의 데이터 위치가 변경
+                            // data.push(parseInt(item.get("acr08")));
+                            // data.push(parseInt(item.get("acr07")));
+
+                            //data = [item.get("acr01"), item.get("acr02"), item.get("acr03"), item.get("acr04"), item.get("acr05"), item.get("acr06"), item.get("acr08"), item.get("acr07")];
+                            totData = [parseInt(item.get("acr_tot"))];
+
+                            if(item.get("smdiv") == "01") {
+                                chartData.push(data);
+                                totalData.push(totData);
+
+                                aVal = data;
+                                bVal = totData;
+                            }else if(item.get("smdiv") == "02") {
+                                chartData1.push(data);
+                                totalData1.push(totData);
+
+                                var x = aVal.concat(data);
+                                var y = bVal.concat(totData);
+
+                                chartValue.push($.arrValue(x));
+                                totalValue.push($.arrValue(y));
+                            }
+                        }
+                    }
+
+                    // tbody columns rowspan
+                    for(var i = 0; i < rows.length; i++){
+                        //auto height zero(chart include)               
+                        $("#grid2 .k-grid-content-locked table tbody").find("tr:eq("+i+")").css("height","40");
+                        $("#grid2 .k-grid-content table tbody").find("tr:eq("+i+")").css("height","40");
+
+                        //loop
+                        for(var j=0; j<16; j++) {
+                            if ( j == 1 || j == 2 || j == 3 ) continue;
+                            if(i%3 == 0 ){
+                                $("#grid2 .k-grid-content table tbody").find("tr:eq("+i+")").find("td:eq("+j+")").attr("rowspan", "3");
+
+                                if(j == 7) $("#grid2").find('tbody').find('tr:eq('+i+')').find('td:eq(7)').attr("colspan","8");
+                                for(var k=8; k<15; k++) {
+                                    $("#grid2").find('tbody').find('tr:eq('+i+')').find("td:eq("+k+")").css("display","none");
+                                }
+                            }
+                            if(i%3 != 0){
+                                $("#grid2 .k-grid-content table tbody").find("tr:eq("+i+")").find("td:eq("+j+")").hide();
+                            }
+                        }//loop j
+                    }//loop i
+
+                    // tbody locked columns rowspan
+                    $("#grid2").rowspan(0);
+
+                    // 판매가, 재료비 bar chart
+                    $(".chart21").each(function(key){
+                            var chart = $(this);
+                            var cnt = parseInt(key / 3);
+
+                            chart.kendoChart({
+                            chartArea: { background: "transparent" },
+                            seriesDefaults: {
+                                labels: {
+                                    // 2018.10.25 labels value 0일 경우 visible false
+                                    // visible: true,
+                                    visible: function(e) {
+                                        return (e.value != 0)? true : false
+                                    },
+                                    background: "transparent",
+                                    position: "center",
+                                    format: "{0:##,#}",
+                                    font: "11px Arial",
+                                    margin: { left: 4 },
+                                }
+                             },
+                            series: [
+                                { data: chartData[cnt], name:"판매가", color: "#FF6800" },
+                                { data: chartData1[cnt], name:"재료비", color: "#A0A700"}
+                            ],
+                            axisDefaults : {
+                                majorGridLines : {
+                                    visible : false
+                                }
+                            },
+                            valueAxis: {
+                                visible : false,
+                                max: chartValue[cnt]["max"],
+                                min: chartValue[cnt]["min"]
+                            },
+                            categoryAxis: {
+                                majorGridLines : {
+                                    visible : false
+                                }
+                            },
+                            // 2018.11.06 tooltip 추가
+                            tooltip: {
+                                visible: true,
+                                template: "#= series.name #: #= kendo.toString(value, 'n0') #"
+                            },
+                            legend: {
+                                visible: false
+                            }
+                        })
+                    });
+
+                    // 합계 bar chart
+                    $(".chart22").each(function(key){
+                           var chart = $(this);
+                           var cnt = parseInt(key / 3);
+
+                            chart.kendoChart({
+                            chartArea: { background: "transparent" },
+                            seriesDefaults: {
+                                labels: {
+                                    // 2018.10.25 labels value 0일 경우 visible false
+                                    // visible: true,
+                                    visible: function(e) {
+                                        return (e.value != 0)? true : false
+                                    },
+                                    background: "transparent",
+                                    position: "center",
+                                    format: "{0:##,#}",
+                                    font: "11px Arial",
+                                    margin: { left: 4 }
+                                }
+                            },
+                            series: [
+                                { data: totalData[cnt], name:"판매가", color: "#FF6800"},
+                                { data: totalData1[cnt], name:"재료비", color: "#A0A700"}                         
+                            ],
+                            axisDefaults : {
+                                majorGridLines : {
+                                    visible : false
+                                }
+                            },
+                            valueAxis: {
+                                visible : false,
+                                max: totalValue[cnt]["max"],
+                                min: totalValue[cnt]["min"]
+                            },
+                            categoryAxis: {
+                                majorGridLines : {
+                                    visible : false
+                                }
+                            },
+                            // 2018.11.06 tooltip 추가
+                            tooltip: {
+                                visible: true,
+                                template: "#= series.name #: #= kendo.toString(value, 'n0') #"
+                            },
+                            legend: {
+                                visible: false
+                            }
+                        })
+                    });
+                }
+            }).data("kendoGrid")
+        }
+
+        // function repStr2(str){
+        //     if(str.indexOf('NC',0) != -1) {
+        //         str = str.replace('NC', '가단가');
+        //         str = "<span style='color:red'>"+str+"</span>";
+        //     } else if(str.indexOf('CE',0) != -1) {
+        //         str = str.replace('CE', '현재가 누락');
+        //         str = "<span style='color:blue'>"+str+"</span>";
+        //     } else if(str.indexOf('-',0) != -1){
+        //         str = str.replace('-','▲');
+        //         //str = "<span style='color:red'>"+str+"</span>";
+        //         str = "<span>"+str+"</span>";
+        //     }
+        //     return str
+        // }
+
+        // function setIcon2(data) {           /* 상태별 아이콘 */
+        //     switch(data) {
+        //         case 'Y' :
+        //             return '<span style="color:yellow; font-size:20px;">'+ '●' +'</span>';
+        //         case 'G' :
+        //             return '<span style="color:green; font-size:20px;">'+ '●' +'</span>';
+        //         case 'R' :
+        //             return '<span style="color:red; font-size:20px;">'+ '●' +'</span>';
+        //         default  :
+        //             return '<span>'+data+'</span>';
+        //     }
+        // }
+
+        function total2(id, name) {         /* total 계산 */
+            if(id.indexOf("Total") != -1) {
+                return '<span class=total>합계</span>';
+            } else {
+                return '<span>'+name+'</span>';
+            }
+        }
+
+    </script>
+
+    <div id="container2" class="tabContainer" style="padding:0; min-width:1230px;">
+        <!-- 2018.11.01 IE 화면 사이즈 조절-->
+        <h2 class="h2-tit" style="margin-bottom: 10px;">판매가/재료비 변동 종합현황(고객별) </h2>
+        <div class="hd-sch">
+            <div class="dis-in txKeep">
+                <span  class="tit-tx">현재기준</span>
+                <input type="text" id="sDt2"style="width:150px;"/>
+            </div>
+            <div class="right" style="padding-right:20px;">
+                <a id="searchBtn2" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                <a id="excelBtn2" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+            </div>
+        </div>
+
+        <!--// 2018.11.08 message 추가 -->
+        <div class="hd-sch" style="padding:0 164px 0 0; margin-bottom:0px;">
+            <div class="dis-in txKeep">
+                <span style="font-weight:bold">
+                ※<span style="color:blue">현재가 누락</span>또는<span style="color:red">가단가</span>일 경우 합계 제외
+                </span>
+            </div>
+            <div class="right"style="padding-right:20px;">
+                <span class="k-icon k-i-stop" style="color:#FF6800;"></span>
+                <span>판매가</span>
+                <span class="k-icon k-i-stop" style="color:#A0A700;"></span>
+                <span style="padding-right: 10px;">재료비</span>
+                <span>[단위 : 천KRW]</span>
+            </div>
+        </div>
+
+        <div class="row-bx" style="padding:0px;">
+            <div id="grid2"></div>
+        </div>
+    </div>
+</div>
+
+<script type="text/x-kendo-template" id="xlsTpl2">
+    <table class="list_sub">
+    <thead>
+        <tr>
+            <th rowspan="2" colspan="2">구분</th>
+            <th rowspan="2" >제품수</th>
+            <th colspan="3">변동금액</th>
+            <th colspan="2">손익효과</th>
+            <th colspan="9">변동사유</th>
+        </tr>
+        <tr>
+            <th>초도가</th>
+            <th>현재가 (#= sDt2.substr(0,4)+"."+sDt2.substr(4,6) #)</th>
+            <th>현재가-초도가</th>
+            <th>이격액</th>
+            <th>이격률</th>
+            <th>사양</th>
+            <th>구매가</th>
+            <th>원자재</th>
+            <th>약정</th>
+            <th>원가절감</th>
+            <th>환율</th>
+            <th>CKD</th>
+            <th>기타</th>
+            <th>합계</th>
+        </tr>
+    </thead>
+    <tbody>       
+        # for (var i = 0; i < rows.length; i++) { #
+        <tr>
+            <td style="text-align: center">#= (rows[i].lcdiv_nm == '') ? "합계" : rows[i].lcdiv_nm  #</td>
+            <td style="text-align: center">#= rows[i].smdiv_nm #</td>
+            <td style="text-align: right">#= rows[i].matnr_cnt #</td>
+            <td style="text-align: right">#= rows[i].sop3m #</td>
+            <td style="text-align: right">#= rows[i].ctprc #</td>
+            <td style="text-align: right">#= rows[i].scamt #</td>
+            <td style="text-align: right">#= rows[i].scsmt #</td>
+            <td style="text-align: right">#= rows[i].scsrt == '' ? '' : rows[i].scsrt +"%" #</td>
+            <td style="text-align: right">#= rows[i].acr01 #</td>
+            <td style="text-align: right">#= rows[i].acr02 #</td>
+            <td style="text-align: right">#= rows[i].acr03 #</td>
+            <td style="text-align: right">#= rows[i].acr04 #</td>
+            <td style="text-align: right">#= rows[i].acr05 #</td>
+            <td style="text-align: right">#= rows[i].acr06 #</td>
+            <td style="text-align: right">#= rows[i].acr07 #</td>
+            <td style="text-align: right">#= rows[i].acr99 #</td>
+            <td style="text-align: right">#= rows[i].acr_tot #</td>
+        </tr>
+    # } #
+    </tbody>
+    </table>
+</script>
