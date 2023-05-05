@@ -1,0 +1,500 @@
+<%@page language="abap"%>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>근무관리시스템 M Plan</title>
+    <%@include file="../Z_ESS_021/inc_header.htm" %>
+    <script src="../Z_ESS_021/js/moment.js"></script>
+
+    <script>
+        var dataSource, grid;
+        var list_data;
+        var iv_pernr = '';
+        var ivYear, ivFinfg, ivStartDt;
+        var cymd = '<%=sy-datum(8) %>';
+
+        $(document).ready(function() {
+            // 폼설정
+            setForm();
+
+            // 검색 세팅
+            setSearchBox();
+
+            // 버튼 세팅
+            setButton();
+
+            // 그리드 셋팅
+            setGrid();
+        });
+
+
+        function setForm() {
+            // 리스트 박스 조회
+            getListBoxData();
+
+            //getYearEndInfo();
+
+            // 기본 날짜 세팅
+            //if (ivFinfg == 'X') {
+                //$("#begda").val(moment(ivStartDt).startOf("month").format("YYYY.MM.DD"));
+                //$("#endda").val(moment(ivStartDt).endOf("month").format("YYYY.MM.DD"));
+            //} else {
+                //$("#begda").val(moment().startOf("month").format("YYYY.MM.DD"));
+                //$("#endda").val(moment().endOf("month").format("YYYY.MM.DD"));
+            //}
+
+            $("#begda, #endda").kendoDatePicker({
+                //min: new Date(ivYear, 0, 1),
+                culture: "ko-KR",
+                format: "yyyy.MM.dd"
+            });
+
+            var beforeMonth = moment(cymd,'YYYYMMDD').subtract(1, 'month');
+            $("#begda").val(kendo.toString(kendo.parseDate(beforeMonth.format('YYYYMM')+"01", "yyyyMMdd"),"yyyy.MM.dd"));
+            $("#endda").val(moment().endOf("month").format("YYYY.MM.DD"));
+
+            // 키보드 입력 불가능(달력 아이콘으로 value 세팅)
+            $("#begda, #endda").attr("readonly", true);
+
+            // 리스트 박스 세팅
+            $("input.dropdownlist").each(function() {
+                var id = this.id;
+                $(this).kendoDropDownList({
+                    dataSource: list_data[id],
+                    dataTextField: "value",
+                    dataValueField: "key"
+                });
+            });
+
+            $("#ET_REGION").data("kendoDropDownList").bind("change", region_change);
+        }
+
+        function setSearchBox() {
+            // 검색 버튼
+            $("#searchBtn").click(function() {
+                grid.dataSource.read(getListData());
+            });
+        }
+
+        function setButton() {
+            // 조회
+            $("#displayBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'R', 'pageCmd': 'D', 'CS_INFO': kendo.stringify(dataItem), 'LIST_BOX': kendo.stringify(list_data)});
+                }
+            });
+
+            // 휴일계획신청
+            $("#prequestBtn").click(function() {
+                //팀선택 여부
+                if ($("#ET_REGION").val() == null || $("#ET_REGION").val() == "") {
+                    alert("신청할 팀을 선택하세요.");
+                    return;
+                }
+                if ($("#ET_OFFICE").val() == null || $("#ET_OFFICE").val() == "") {
+                    alert("신청할 팀을 선택하세요.");
+                    return;
+                }
+
+                 // sendForm 전 권한 체크
+                 reqCheck('P', 'C', {
+                    'region': $("#ET_REGION").val(),
+                    'office': $("#ET_OFFICE").val(),
+                    'regiontx': $("#ET_REGION").data("kendoDropDownList").text(),
+                    'officetx': $("#ET_OFFICE").data("kendoDropDownList").text()
+                    }
+                 );
+            });
+
+            // 2019.01.21 평일실적신청 추가
+            // 평일실적신청
+            $("#areWeekdayBtn").click(function() {
+                //팀선택 여부
+                if ($("#ET_REGION").val() == null || $("#ET_REGION").val() == "") {
+                    alert("신청할 팀을 선택하세요.");
+                    return;
+                }
+                if ($("#ET_OFFICE").val() == null || $("#ET_OFFICE").val() == "") {
+                    alert("신청할 팀을 선택하세요.");
+                    return;
+                }
+
+                 // sendForm 전 권한 체크
+                 reqCheck('Z', 'C1', {
+                    'region': $("#ET_REGION").val(),
+                    'office': $("#ET_OFFICE").val(),
+                    'regiontx': $("#ET_REGION").data("kendoDropDownList").text(),
+                    'officetx': $("#ET_OFFICE").data("kendoDropDownList").text()
+                    }
+                 );
+            });
+
+            // 휴일실적신청
+            $("#areHolidayBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (dataItem.wkfst != "A" && dataItem.zgubun == "C") {
+                    alert("승인된 건에 대해서만 실적신청할 수 있습니다.");
+                } else if (dataItem.wkfst != "A" && dataItem.zgubun == "R") {
+                    alert("실적신청 진행중입니다.");
+                } else if (dataItem.zgubun == "R") {
+                    alert("이미 실적신청을 하였습니다.");
+                } else {
+                    reqCheck('A', 'C2', dataItem);
+                }
+            });
+
+            // 재상신
+            $("#request1Btn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (!(dataItem.wkfst == "R" || dataItem.wkfst == "C")) {
+                    alert("결재반려되거나 결재취소한 건에 대해서만 재상신 가능합니다.");
+                } else {
+                    reqCheck('X', 'RE', dataItem);
+                }
+            });
+
+            // 수정
+            $("#changeBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (!(dataItem.wkfst == null || dataItem.wkfst == "")) {
+                    alert("진행중입니다.");
+                } else {
+                    reqCheck('H', 'U', dataItem);
+                }
+            });
+
+            // 취소
+            $("#cancelBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (dataItem.wkfst != "Q") {
+                    alert("결재진행중이거나 결재승인 또는 결재반려된 경우 취소가 되지 않습니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'C', 'pageCmd': 'CA', 'CS_INFO': kendo.stringify(dataItem), 'LIST_BOX': kendo.stringify(list_data)});
+                }
+            });
+
+            // 삭제
+            $("#deleteBtn").click(function() {
+                var dataItem = grid.dataItem(grid.select());
+                if (dataItem == null) {
+                    alert("라인을 선택해 주시기 바랍니다.");
+                } else if (dataItem.wkfst != "C") {
+                    alert("결재취소한 건에 대해서만 신청리스트 상에서 삭제 가능합니다.");
+                } else {
+                    sendForm("display.htm", {'FLAG': 'D', 'pageCmd': 'DS', 'CS_INFO': kendo.stringify(dataItem), 'LIST_BOX': kendo.stringify(list_data)});
+                }
+            });
+
+        }
+
+        function getListData() {
+            var begda = $("#begda").val().replace(/\./g, '');
+            var endda = $("#endda").val().replace(/\./g, '');
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_GET_LIST_DATA");
+            cfc.addParam('IV_BEGDA',  begda, false);
+            cfc.addParam('IV_ENDDA',  endda, false);
+            cfc.addParam('IV_REQTY',  $("#ET_REQTY").val(), false);
+            cfc.addParam('IV_REGION',  $("#ET_REGION").val(), false);
+            cfc.addParam('IV_OFFICE',  $("#ET_OFFICE").val(), false);
+            cfc.addParam('IV_PERNR', iv_pernr, false);
+
+            return cfc.getData();
+        }
+
+        function setGrid() {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 10,
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length",
+                    model: {
+                        fields: {
+                            reqdt: {type: "string"},
+                            appid: {type: "string"},
+                            reqtytx: {type: "string"},
+                            datum: {type: "string"},
+                            regiontx: {type: "string"},
+                            officetx: {type: "string"},
+                            evttx: {type: "string"},
+                            appdt: {type: "string"},
+                            wkfstt: {type: "string"}
+                        }
+                    }
+                },
+                requestEnd: function(e) {
+                    //var pernr = e.response.EV_PERNR;
+                    //$("#pernrt").val(pernr);
+                    //console.log(pernr);
+                }
+            });
+
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 420,
+                sortable: false,
+                resizable: true,
+                pageable: true,
+                navigatable: true,
+                selectable: true,
+                editable: false,
+                columns: [
+                    lineClick,
+                    { field: "reqdt",  title: "신청일",   width: 80,  template: "#= kendo.toString(kendo.parseDate(reqdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "appid",  title: "신청No.", width: 100},
+                    { field: "reqtytx",  title: "구분", width: 70},
+                    { field: "datum",  title: "근태일",   width: 80,  template: "#= kendo.toString(kendo.parseDate(datum, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "regiontx",  title: "사업소", width: 130},
+                    { field: "officetx",  title: "팀명", width: 130},
+                    { field: "evttx",  title: "총시간", width: 100},
+                    { field: "appdt", title: "승인일",  width: 80, template: "#= appdt == '00000000' ? '' : kendo.toString(kendo.parseDate(appdt, 'yyyyMMdd'), 'yyyy.MM.dd') #"},
+                    { field: "wkftx",  title: "상태", width: 80}
+
+                ]
+            }).data("kendoGrid");
+
+            grid.bind("dataBound", function(e) {
+                    // 그리드 데이터 없을때
+                    var msg = "검색 조건에 해당하는 신청내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.data().length == 0) {
+                        var colCount = grid.columns.length;
+                        $(e.sender.wrapper)
+                            .find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data">'+msg+'</td></tr>');
+                    } else{
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+            });
+        }
+
+        function getListBoxData() {
+            var param;
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_GET_LISTBOX");
+            cfc.addParam('IV_PERNR', iv_pernr, false);
+
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                async: false,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: param,
+                type: "POST",
+                success: function(data) {
+                    list_data = data;
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        // function getYearEndInfo() {
+        //     var cfc = new CallFuncClass();
+        //     cfc.setFuncName("Z_HR_PTS_GET_YEAR_ENDDT");
+        //     cfc.addParam('I_DATUM',  cymd, false);
+        //     data = callSyncData(cfc);
+        //     ivYear = kendo.toString(kendo.parseDate(data.E_FINDT, "yyyyMMdd"),"yyyy");
+        //     ivStartDt = data.E_FINDT;
+        //     ivFinfg = data.E_FINFG;
+        // }
+
+        function getRequestData(flag, dataItem) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_GET_REQUEST");
+            cfc.addParam('IV_FLAG', flag, false);   // 'P': 휴일계획신청  / 'Z':평일실적신청 / 'A': 휴일실적신청 / 'X': 재상신 / 'H': 수정
+            cfc.addParam('IV_HASS', 'X', false);    // '': ESS / 'X': HASS
+            cfc.addParam('IV_PERNR', iv_pernr, false);
+
+            if (flag == 'P' || flag == 'Z' ) {      // 휴일계획신청, 평일실적신청일 경우
+                cfc.addParam('IV_REGION', $("#ET_REGION").val());
+                cfc.addParam('IV_OFFICE', $("#ET_OFFICE").val());
+                cfc.addParam('CS_INFO', '', false);
+            } else {
+                cfc.addParam('CS_INFO', dataItem, true);
+            }
+
+            return cfc.getData();
+        }
+
+        function reqCheck(flag, pageCmd, dataItem) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                data: getRequestData(flag, dataItem),
+                type: "POST",
+                success: function(data) {
+                    if (data.ES_RESULT.subrc.trim() == "0" || data.ES_RESULT.subrc.trim() == "") {
+                        var url = "create.htm";
+                        if (flag == "X") {          // 재상신
+                            url = "create1.htm";
+                        } else if (flag == "A") {   // 휴일실적신청
+                            url = "create_a.htm";
+                        }
+
+                        sendForm(url, {
+                            'FLAG': flag,
+                            'pageCmd': pageCmd,
+                            'CS_INFO': kendo.stringify(dataItem),
+                            'LIST_BOX': kendo.stringify(list_data)
+                        });
+                    } else {
+                        alert(data.ES_RESULT.message);
+                    }
+                },
+                error: function () {
+                    alert("server error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+        function region_change(e) {
+            var value = this.value();
+            if (value == null || value == "") return;
+
+            var param;
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_HR_SV_GET_OFFICE");
+            cfc.addParam('IV_REGION', value, false);
+            cfc.addParam('IV_PERNR', iv_pernr, false);
+
+            param = cfc.getData();
+
+            $.ajax({
+                url: URL.callFunction,
+                async: false,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: param,
+                type: "POST",
+                success: function(data) {
+                    $("#ET_OFFICE").data("kendoDropDownList").setDataSource(data.ET_OFFICE);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+
+    </script>
+</head>
+
+<body>
+    <section id="container">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>근무관리</span>
+            <strong>연장근로(서비스)</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>근무관리</h3>
+            <!-- //title -->
+            <!-- title -->
+            <h4>연장근로(서비스)</h4>
+            <!-- //title -->
+
+            <!-- search -->
+            <div class="search_box">
+                <table>
+                    <colgroup>
+                        <col width="80" />
+                        <col width="230" />
+                        <col width="60" />
+                        <col width="100" />
+                        <col width="70" />
+                        <col width="140" />
+                        <col width="50" />
+                        <col width="*" />
+                    </colgroup>
+                    <tr>
+                        <th scope="row">조회기간</th>
+                        <td>
+                            <input type="text" id="begda" style="width:100px" />
+                            ~
+                            <input type="text" id="endda" style="width:100px" />
+                        </td>
+                        <th scope="row">구분</th>
+                        <td>
+                            <input type="text" id="ET_REQTY" class="dropdownlist" style="width:80px" />
+                        </td>
+                        <th scope="row">사업소</th>
+                        <td>
+                            <input type="text" id="ET_REGION" class="dropdownlist" />
+                        </td>
+                        <th scope="row">팀</th>
+                        <td>
+                            <input type="text" id="ET_OFFICE" class="dropdownlist" />
+                            <button type="button" class="btn_search" id="searchBtn">검색</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <!-- //search -->
+
+            <!-- button -->
+            <div class="btn_wrap">
+                <button type="button" class="btn_basic" id="displayBtn">조회</button>
+                <button type="button" class="btn_basic_b" id="areWeekdayBtn">평일실적신청</button>
+                <button type="button" class="btn_basic_b" id="prequestBtn">휴일계획신청</button>
+                <button type="button" class="btn_basic_b" id="areHolidayBtn">휴일실적신청</button>
+                <button type="button" class="btn_basic" id="changeBtn">수정</button>
+                <button type="button" class="btn_basic" id="request1Btn">재상신</button>
+                <button type="button" class="btn_basic" id="cancelBtn">취소</button>
+                <button type="button" class="btn_basic" id="deleteBtn">삭제</button>
+            </div>
+            <!-- //button -->
+
+            <!-- list -->
+            <div id="grid"></div>
+            <!-- //list -->
+
+        </article>
+        <!-- //contents -->
+
+    </section>
+</body>
+</html>
