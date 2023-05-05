@@ -1,0 +1,732 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>제품별 상세조회(그래프)</title>
+<%@include file="../z_msp_100/inc_menu.htm" %>
+    <style type="text/css">
+        /* 2019.01.10 even row background color 제거 */
+        .k-grid tr:nth-child(even){
+            background-color:#FFFFFF;
+        }
+        .k-grid-header th.k-header {
+            vertical-align: middle;
+        }
+        /* 2019.01.21 notification 제거 */
+        .k-widget.k-notification.k-notification-info {
+            background-color: #999;
+            /*border-radius : 20px;*/
+            height: 50px;
+        }
+        /* Info template */
+        .new-info {
+            width: 250px;
+            height: 30px;
+        }
+        .new-info h3 {
+            font-size: 1em;
+            text-align: center;
+            padding: 18px 10px 5px;
+            color: #fff;
+        }
+        .new-info img {
+            float: left;
+            margin: 10px 10px 20px 20px;
+        }
+
+    </style>
+
+
+    <script>
+        var grid, dataSource, sDt, notification;
+        $(document).ready(function() {
+            setSearchbox();
+            getListbox_Loop();
+            setButton();
+
+            /* 2019.01.21 notification 제거 */
+            // setNotification();
+        });
+// =============================================================================================================================================
+        function initCreate(type,date) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData(type,date),
+                type: "POST",
+                success: function(data) {
+                    setCreate(data,'');
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function getCreateData(type,date) {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF206_44');
+            cfc.addParam('IV_DVDIV', $("#dvdiv").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_MATNR', $("#matnr").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            return cfc.getData();
+        }
+        function setCreate(data,type) {
+            if(type == ''){
+                setGrid(data);
+            }
+        }
+// =============================================================================================================================================
+        function setGrid(data) {
+            dataSource = new kendo.data.DataSource({
+                type: "json",
+                data: data,
+                schema: {
+                    data: "CT_LIST",
+                    total: "CT_LIST.length",
+                    model: {
+                        fields: {
+                        }
+                    }
+                }
+            });
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height:150,
+                selectable:true,
+                scrollable:true,
+                sortable: true,
+                resizable: true,
+                navigatable: true,
+                filterable:false,
+                editable:false,
+                columns: [
+                    { field: "maktx", title: "품명", width: "20%" , attributes:{style:"text-align:left"} },
+                    { field: "matnr", title: "품번", width: "20%" },
+                    { field: "usgrt", title: "USG", width: "8%" },
+                    { field: "optrt", title: "옵션율", width: "8%", template: "#= optrt == '' ? '' : optrt+'%'  #" },
+                    { field: "pltnm", title: "생산공장", width: "8%" },
+                    { field: "rmark", title: "비고", width: "*" }
+                ],
+                dataBound:function(e){
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                        if (grid.dataSource.total() == 0) {
+                            var colCount = grid.columns.length;
+                            $(e.sender.wrapper)
+                                .find('tbody')
+                                .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                        }
+                        // header
+                        $('.k-grid-header').css('padding-right', '0px');
+                }
+            }).data("kendoGrid");
+        }
+        function getGListbox(type,grpid){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_04');
+            cfc.addParam('IV_GRPID', grpid, false);
+            cfc.addParam('IV_SPRAS', dsUserInfo.spras, false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    getDropdownList(type,data);
+                }
+            });
+        }
+        function getDListbox(type){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF206_05');
+            if ((type =='C') || (type == 'D') || (type == 'X') || (type== 'R')) {
+                cfc.addParam('IV_DVDIV', $("#dvdiv").data("kendoDropDownList").value(), false);
+            }
+            if ((type == 'D') || (type == 'X') || (type== 'R')) {
+                cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            }
+            if ((type == 'X')  || (type== 'R')){
+                cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            }
+
+            cfc.addParam('CT_DVDIV', '', false);
+            cfc.addParam('CT_CARTP', '', false);
+            cfc.addParam('CT_DIV03', '', false);
+            cfc.addParam('CT_MAKTX', '', false);
+            cfc.addParam('CT_MATNR', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    getDropdownList(type,data);
+                }
+            });
+        }
+        function getDropdownList(type,data){
+            if(type == 0 ){
+                // 개발구분
+                var combobox_CT_DVDIV = $("#dvdiv").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_CT_DVDIV.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_CT_DVDIV.select(1);
+                getDListbox('C');
+            } else if(type == 1){
+                // 환종
+                var combobox_MSP020 = $("#MSP020").data("kendoDropDownList");
+                combobox_MSP020.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_MSP020.select(0);
+            }
+            // 2018.11.13 품명, 품번 COMBOBOX 통합
+            /*else if(type == 'X'){
+                // 품명
+                var combobox_CT_MAKTX = $("#maktx").data("kendoDropDownList");
+                data.CT_MAKTX.unshift({maktx:''});
+                //data.CT_LIST.unshift({dcdid:'',dcdnm:'',grpid:''});
+                combobox_CT_MAKTX.setDataSource(new kendo.data.DataSource({data:data.CT_MAKTX}));
+                //combobox_CT_MAKTX.select(0);
+            }*/ else if(type == 'R' || type == 'X'){
+                // 품번
+                var combobox_CT_MATNR = $("#matnr").data("kendoDropDownList");
+                data.CT_MATNR.unshift({value:'',text:''});
+                combobox_CT_MATNR.setDataSource(new kendo.data.DataSource({data:data.CT_MATNR}));
+                combobox_CT_MATNR.select(0);
+            } else if(type == 'C'){
+                // 차종
+                var combobox_CT_CARTP = $("#cartp").data("kendoDropDownList");
+                data.CT_CARTP.unshift({value:'',text:''});
+                combobox_CT_CARTP.setDataSource(new kendo.data.DataSource({data:data.CT_CARTP}));
+                combobox_CT_CARTP.select(0);
+            } else if(type == 'D'){
+                // 제품군
+                var combobox_CT_DIV03 = $("#div03").data("kendoDropDownList");
+                data.CT_DIV03.unshift({value:'',text:''});
+                combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_DIV03}));
+                combobox_CT_DIV03.select(0);
+            }
+        }
+        function getListbox_Loop(){
+            var grpid;
+            for(var i = 0; i < 2; i++){
+                if (i == 0){ grpid = 'MSP023'}
+                if (i == 1){ grpid = 'MSP020'}
+                getGListbox(i,grpid);
+            }
+        }
+        function setSearchbox(){
+            $("#MSP020").kendoDropDownList({
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0
+            });
+            // 개발구분
+            $("#dvdiv").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= dcdid #</span> #= dcdnm #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= dcdid #</span><span> #= dcdnm#</span>',
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+                change: function(e){ getDListbox('C'); }
+            });
+            // 차종
+            $("#cartp").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth,
+                change:function(e){ getDListbox('D'); }
+            });
+            // 제품군
+            $("#div03").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth,
+                change:function(e){ getDListbox('X'); }
+            });
+            // 2018.11.13 품명, 품번 COMBOBOX 통합
+            /*// 품명
+            $("#maktx").kendoDropDownList({
+                dataTextField: "maktx",
+                dataValueField: "maktx",
+                index:0,
+                change:function(e){ getDListbox('R'); }
+            });*/
+            // 품번
+            $("#matnr").kendoDropDownList({
+                // dataTextField: "matnr",
+                // dataValueField: "matnr",
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0,
+                open: adjustDropDownWidth
+            });
+            // 2018.11.12 dropdownlist adjust width automatically
+            var cartpDropDown = $("#cartp").data("kendoDropDownList");
+            var div03DropDown = $("#div03").data("kendoDropDownList");
+            var matnrDropDown = $("#matnr").data("kendoDropDownList");
+            cartpDropDown.list.width("auto");
+            div03DropDown.list.width("auto");
+            matnrDropDown.list.width("auto");
+        }
+        // 2018.11.12 dropdownlist adjust width automatically
+        function adjustDropDownWidth(e) {
+            var listContainer = e.sender.list.closest(".k-list-container");
+            listContainer.width(listContainer.width() + kendo.support.scrollbar());
+        }
+        function setCreateSeries(date){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF206_41');
+            cfc.addParam('IV_DVDIV', $("#dvdiv").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_MATNR', $("#matnr").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        setChart(data);
+                    } else if (data.EV_MSG == '' && data.EV_SUBRC == "04") {
+                        //$("#chart1").kendoChart;
+                        alert('해당 내역이 없습니다.');
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart(data){
+            var seriesData = data.CT_LIST;
+            for(var i = 0; i < data.CT_LIST.length; i++){
+                if(data.CT_LIST[i].slprc.indexOf(",") != -1){
+                    seriesData[i].slprc = data.CT_LIST[i].slprc.split(",").join("");
+                }
+                if(data.CT_LIST[i].mtprc.indexOf(",") != -1){
+                    seriesData[i].mtprc = data.CT_LIST[i].mtprc.split(",").join("");
+                }
+                if(data.CT_LIST[i].mtprc.indexOf("NC",0) != -1){
+                    seriesData[i].mtprc = data.CT_LIST[i].mtprc.replace("NC", "가단가")
+                }
+                if(data.CT_LIST[i].slprc.indexOf("NC",0) != -1){
+                    seriesData[i].slprc = data.CT_LIST[i].slprc.replace("NC", "가단가")
+                }
+                if(seriesData[i].mtprc == ""){
+                    delete seriesData[i].mtprc;
+                }
+                if(seriesData[i].slprc == ""){
+                    delete seriesData[i].slprc;
+                }
+            }
+            $("#chart1").kendoChart({
+                dataSource:{
+                    data:seriesData
+                },
+                title: {
+                },
+                legend: {
+                    position: "bottom",
+                    //position: "right",
+                    //position: "custom",
+                    //offsetX:"center",
+                    //offsetY:0,
+                    visible: true
+                    // visible: false
+                },
+                seriesDefaults:{
+                    type: "line"
+                },
+                series: [{
+                    data:seriesData,
+                    field: "slprc",
+                    categoryField: "ctdiv",
+                    labels: {
+                        visible: true,
+                        background: "transparent",
+                        margin:0,
+                        position:"top",
+                        template: "#=kendo.toString(parseInt(value), 'n0') #"
+                    },
+                    name:"판매가 "
+                },{
+                    data:seriesData,
+                    field: "mtprc",
+                    categoryField: "ctdiv",
+                    labels: {
+                        visible: true,
+                        background: "transparent",
+                        margin:0,
+                        position:"bottom",
+                        template: "#=kendo.toString(parseInt(value), 'n0') #"
+                    },
+                    name:"재료비 "
+                }],
+                categoryAxis: {
+                    // categories: ["목표(현상)","시작도","양산도","P2","양산","초도가(SOP+3M)","+1Y","+2Y","+3Y","+4Y","+5Y","+6Y","+7Y"],
+                    // majorGridLines: {
+                    //     visible: false
+                    // }
+                    labels:{
+                        template: labelTemplate
+                    }
+                },
+                valueAxis: [{
+                    //max: 1000,
+                    // line: {
+                    //     visible: false
+                    // },
+                    // majorGridLines: {
+                    //     visible: false
+                    // },
+                    // minorGridLines: {
+                    //     visible: false
+                    // },
+                    // format:"{0:N0}",
+                    labels: {
+                        visible: true,
+                        background: "transparent",
+                        template: "#=kendo.toString(parseInt(value), 'n0') #"
+                    }
+                }],
+                tooltip: {
+                    visible: true,
+                    template: "#= category #: #= kendo.toString(parseInt(value), 'n0')#"
+                }
+            });
+        }
+        function labelTemplate(e) {
+            return e.value.split("(").join("\n(");
+        }
+        function setCreateSeries2(date){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF206_42');
+            cfc.addParam('IV_DVDIV', $("#dvdiv").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_MATNR', $("#matnr").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    //if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        setChart2(data);
+                    // } else {
+                    //     alert('재료비율 데이터가 없습니다.');
+                    // }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart2(data){
+            var seriesData = data.CT_LIST;
+            $("#chart2").kendoChart({
+                dataSource:{
+                    data:seriesData
+                },
+                legend: {
+                    visible: true,
+                    position: "right"
+                },
+                seriesDefaults: {
+                    type: "area",
+                    area: {
+                        line: {
+                            style: "smooth"
+                        }
+                    }
+                },
+                series: [{
+                        data: seriesData,  
+                        field: "matrt",
+                        categoryField: "ctdiv",
+                        labels: {
+                          visible: true,
+                          background: "transparent"
+                        },
+                        color: "#0070C0",
+                    }],
+                valueAxis: {
+                    labels: {
+                        format: "{0}%"
+                    },
+                    line: {
+                        visible: false
+                    },
+                    axisCrossingValue: -10
+                },
+                tooltip: {
+                    visible: true,
+                    format: "{0}%",
+                    template: "#= category #: #= value #"
+                }
+            });
+        }
+        function setCreateSeries3(date){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF206_43');
+            cfc.addParam('IV_DVDIV', $("#dvdiv").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_CARTP', $("#cartp").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_DIV03', $("#div03").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_MATNR', $("#matnr").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    //if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        setChart3(data);
+                    // } else {
+                    //     alert('부가외형 데이터가 없습니다.');
+                    // }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart3(data){
+            var seriesData = data.CT_LIST;
+            for(var i = 0; i < seriesData.length; i++){
+                if(seriesData[i].matrt == "" || seriesData[i] == 0){
+                    delete seriesData[i].matrt;
+                }
+            }
+            $("#chart3").kendoChart({
+                dataSource:{
+                    data:seriesData
+                },
+                legend: {
+                    //visible: true,
+                    visible: false,
+                    position: "right",
+                },
+                seriesDefaults: {
+                    type: "area"
+                },
+                series: [{
+                        data: seriesData,
+                        field: "matrt",
+                        categoryField: "ctdiv",
+                        labels: {
+                          visible: true,
+                          background: "transparent",
+                          margin: { bottom: -5 }
+                        },
+                        name: "부가외형"
+                    }],
+                categoryAxis: {
+                    labels:{
+                        template: labelTemplate
+                    }
+                },
+                valueAxis: {
+                    labels: {
+                        format: "{0}%"
+                    },
+                    line: {
+                        visible: false
+                    },
+                    axisCrossingValue: -10
+                },
+                tooltip: {
+                    visible: true,
+                    format: "{0}%",
+                    template: "#= category #: #= value #%"
+                }
+            });
+        }
+//================================================================================================================================================
+        function setForm(){
+            // var dt = $("#sDt").val().replace(/\./g, '');
+            initCreate('');
+            setCreateSeries();
+            //setCreateSeries2();
+            setCreateSeries3();
+        }
+        function setButton(){
+            $("#searchBtn").click(function(e) {
+                // 2018.11.13 품명, 품번 COMBOBOX 통합
+                /*if(($("#matnr").data("kendoDropDownList").value() == '') && ($("#maktx").data("kendoDropDownList").value() != '')) {
+                    alert('품번을 선택해주세요.');
+                } else if (($("#dvdiv").data("kendoDropDownList").text() == '') || ($("#div03").data("kendoDropDownList").value() == '') || ($("#cartp").data("kendoDropDownList").value() == '')) {
+                    alert('개발구분, 차종, 제품군이 선택되었는지 확인하세요.');
+                } else {
+                    setForm();
+                }*/
+                if($("#dvdiv").data("kendoDropDownList").text() == '') {
+                    alert('개발구분을 선택해주세요.');
+                } else if($("#cartp").data("kendoDropDownList").value() == '') {
+                    alert('차종을 선택해주세요.');
+                    /* 2019.01.21 notification 제거 */
+                    //notification.show({message: "차종을 선택해 주세요!"}, "info");
+                } else if($("#div03").data("kendoDropDownList").value() == '') {
+                    alert('제품군을 선택해주세요.');
+                    /* 2019.01.21 notification 제거 */
+                    //notification.show({message: "제품군을 선택해주세요!"}, "info");
+                } /*else if($("#matnr").data("kendoDropDownList").value() == '') {
+                    alert('품번을 선택해주세요.');
+                    //notification.show({message: "품번을 선택해주세요!"}, "info");
+                }*/ else {
+                    setForm();
+                }
+            });
+        }
+
+        /* 2019.01.21 notification 제거 */
+        // function setNotification() {
+        //     var _left = (screen.width  - 250 ) / 2;
+        //     var _top = (screen.height - 400 ) / 2;
+        //     notification = $("#notification").kendoNotification({
+        //             position: {
+        //                 top: _top,
+        //                 left: _left
+        //             },
+        //             autoHideAfter: 1500,
+        //             // stacking: "down",
+        //             templates: [{
+        //                 type: "info",
+        //                     template: $("#infoTemplate").html()
+        //                 }, {
+        //                 type: "error",
+        //                     template: $("#errorTemplate").html()
+        //             }],
+        //     }).data("kendoNotification");
+        // }
+    </script>
+</head>
+<body>
+    <div id="container">
+        <h2 class="h2-tit">제품별 상세조회(그래프)</h2>
+        <div class="hd-sch">
+            <div class="dis-in txKeep">
+                <span class="tit-tx">개발구분</span>
+                <input type="hidden" id="dvdiv" class="header_sch" style="width:80px;"/>
+                <span class="tit-tx">차종</span>
+                <input type="hidden" id="cartp" class="header_sch" style="width:150px;"/>
+                <span class="tit-tx">제품군(소)</span>
+                <input type="hidden" id="div03" class="header_sch" style="width:150px;"/>
+                <!-- 2018.11.13 품명, 품번 COMBOBOX 통합 -->
+                <!-- <span class="tit-tx">제품명</span>
+                <input type="hidden" id="maktx" class="header_sch" style="width:200px;"/> -->
+                <span class="tit-tx">품번</span>
+                <input type="hidden" id="matnr" class="header_sch" style="width:300px;" />
+            </div>
+            <div class="right">
+                <a id="searchBtn" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+            </div>
+            <div class="right" style="margin: 0px 180px 0px 0px; display: none">
+                <span class="tit-tx">단위:</span>
+                <input type="text" id="MSP020" style="width: 95px" />
+            </div>
+        </div>
+        <div class="row-group">
+            <div class="rows">
+                <div class="row-tit"  style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit">판매가/재료비 <span class="sub-tx">3M(단위: 원)</span></h3>
+                </div>
+                <div class="chart-bx">
+                    <ul class="chart-gu">
+                        <li style="width:20%;">개발단계</li>
+                        <li style="width:80%;">양산단계</li>
+                    </ul>
+                    <div id="chart1" style="height:230px;"></div>
+                </div>
+            </div>
+        </div>
+        <!--<div class="row-group">
+            <div class="rows">
+                <div class="row-tit"  style="margin:10px 0 5px 0; padding:0 20px 5px 20px>
+                    <h3 class="gtit">재료비율</h3>
+                </div>
+                <div id="chart2" style="height:200px;"></div>
+            </div>
+        </div> -->
+        <div class="row-group">
+            <div class="rows">
+                <div class="row-tit"  style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit">부가외형</h3>
+                </div>
+                <div id="chart3" style="height:200px;"></div>
+            </div>
+        </div>
+        <div class="row-group">
+            <div class="rows">
+                <div class="row-tit"  style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit">대표사양</h3>
+                </div>
+                <div id="grid" class="relativeGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2019.01.21 notification 제거 -->
+    <!-- <span id="notification" style="display:none;"></span>
+    <script id="infoTemplate" type="text/x-kendo-template">
+          <div class="new-info">
+            <img src="../Z_MSP_100/images/info-icon.png" style="width:30px;"/>
+            <h3>#= message #</h3>
+        </div>
+    </script>
+    <script id="errorTemplate" type="text/x-kendo-template">
+       <div class="wrong-error">
+          <img src="../content/web/notification/error-icon.png" style: width"50px" height="50px" />
+          <h3>#= title #</h3>
+          <p>#= message #</p>
+       </div>
+    </script> -->
+</body>
+</html>
