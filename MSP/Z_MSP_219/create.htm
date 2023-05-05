@@ -1,0 +1,373 @@
+<%@page language="ABAP"%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>공지사항</title>
+    <%@include file="../z_msp_100/inc_header.htm" %>
+    <script>
+        var dataSource, grid, csInfo;
+        var seq = '<%=PA_SEQNO%>';
+        var pageCmd = '<%=PA_FLAG%>';
+
+        $(document).ready(function() {
+            setForm();
+            setButton();
+            getListData();
+            authorityCheck();
+        });
+
+        function authorityCheck() {         /* 권한 체크 */
+            <% if PA_AUTH is initial. %>
+            alert("시스템 권한이 없습니다.");
+            self.close();
+            <% endif. %>
+        }
+
+        function setButton(){
+            <% if PA_AUTH eq 'X'. %>
+            $("#saveBtn").click(function(){
+                reqApprove();
+            })
+            // 파일업로드 팝업
+            $("#file1").click(function() {
+                openFileUploadPopup('setFile1', 'ZMSP019');
+            });
+            $("#file2").click(function() {
+                openFileUploadPopup('setFile2', 'ZMSP019');
+            });
+            $("#file3").click(function() {
+                openFileUploadPopup('setFile3', 'ZMSP019');
+            });
+            $("#file4").click(function() {
+                openFileUploadPopup('setFile4', 'ZMSP019');
+            });
+            <% endif. %>
+        }
+
+        <% if PA_AUTH eq 'X'. %>
+        // 파일업로드
+        function setFile1(data) {
+            $("#file1").hide();
+            $("#file1_attach").find("a").remove();
+            $("#file1_attach").find("button").remove();
+            $("#obj01").val(data.EV_OBJID);
+            $("#fname1").val(data.EV_FNAME);
+            $("#uri1").val(data.EV_URI);
+            $("#file1_attach").append("<a>").find("a").attr("href", data.EV_URI).attr("target","_blank").text(data.EV_FNAME);
+            $("#file1_attach").find("a").css("color", "blue");
+            $("#file1_attach").find("a").css("text-decoration", "underline");
+            $("#file1_attach").append("<button>").find("button").text("삭제").addClass("fa fa-trash-o").click(function() {
+                deleteAttachFile($(this).parent().find("input[name^=obj01]").val());
+                $(this).parent().find("input[type=hidden]").each(function(){ $(this).val(''); });
+                $(this).parent().find("a").remove();
+                $(this).parent().find("button").remove();
+                $("#file1").show();
+            }).css({"margin-left":"5px"});
+        }
+        // 파일업로드
+        function setFile2(data) {
+            $("#file2").hide();
+            $("#file2_attach").find("a").remove();
+            $("#file2_attach").find("button").remove();
+            $("#obj02").val(data.EV_OBJID);
+            $("#fname2").val(data.EV_FNAME);
+            $("#uri2").val(data.EV_URI);
+            $("#file2_attach").append("<a>").find("a").attr("href", data.EV_URI).attr("target","_blank").text(data.EV_FNAME);
+            $("#file2_attach").find("a").css("color", "blue");
+            $("#file2_attach").find("a").css("text-decoration", "underline");
+            $("#file2_attach").append("<button>").find("button").text("삭제").addClass("fa fa-trash-o").click(function() {
+                deleteAttachFile($(this).parent().find("input[name^=obj02]").val());
+                $(this).parent().find("input[type=hidden]").each(function(){ $(this).val(''); });
+                $(this).parent().find("a").remove();
+                $(this).parent().find("button").remove();
+                $("#file2").show();
+            }).css({"margin-left":"5px"});
+        }
+        // 파일업로드
+        function setFile3(data) {
+            $("#file3").hide();
+            $("#file3_attach").find("a").remove();
+            $("#file3_attach").find("button").remove();
+            $("#obj03").val(data.EV_OBJID);
+            $("#fname3").val(data.EV_FNAME);
+            $("#uri3").val(data.EV_URI);
+            $("#file3_attach").append("<a>").find("a").attr("href", data.EV_URI).attr("target","_blank").text(data.EV_FNAME);
+            $("#file3_attach").find("a").css("color", "blue");
+            $("#file3_attach").find("a").css("text-decoration", "underline");
+            $("#file3_attach").append("<button>").find("button").text("삭제").addClass("fa fa-trash-o").click(function() {
+                deleteAttachFile($(this).parent().find("input[name^=obj03]").val());
+                $(this).parent().find("input[type=hidden]").each(function(){ $(this).val(''); });
+                $(this).parent().find("a").remove();
+                $(this).parent().find("button").remove();
+                $("#file3").show();
+            }).css({"margin-left":"5px"});
+        }
+        // 파일업로드
+        function setFile4(data) {
+            $("#file4").hide();
+            $("#file4_attach").find("a").remove();
+            $("#file4_attach").find("button").remove();
+            $("#obj04").val(data.EV_OBJID);
+            $("#fname4").val(data.EV_FNAME);
+            $("#uri4").val(data.EV_URI);
+            $("#file4_attach").append("<a>").find("a").attr("href", data.EV_URI).attr("target","_blank").text(data.EV_FNAME);
+            $("#file4_attach").find("a").css("color", "blue");
+            $("#file4_attach").find("a").css("text-decoration", "underline");
+            $("#file4_attach").append("<button>").find("button").text("삭제").addClass("fa fa-trash-o").click(function() {
+                deleteAttachFile($(this).parent().find("input[name^=obj04]").val());
+                $(this).parent().find("input[type=hidden]").each(function(){ $(this).val(''); });
+                $(this).parent().find("a").remove();
+                $(this).parent().find("button").remove();
+                $("#file4").show();
+            }).css({"margin-left":"5px"});
+        }
+        <% endif. %>
+
+        function getListData() {
+            var flag = pageCmd == 'C' ? 'I' : '';
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF219_02');
+            cfc.addParam('IV_SEQNO', seq, false);
+            cfc.addParam('IV_FLAG', flag, false);
+            cfc.addParam('CT_LIST','',false);
+
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        csInfo = data.CT_LIST;
+                        setData(data);
+                        getListbox(pageCmd);
+                    } else{
+                        alert("error");
+                    }
+                },
+                error: function () {
+                    alert("error");
+                }
+            });
+        }
+
+        function setData(data){
+            // 게시 시작일
+            var date = new Date();
+            var yyyy = date.getFullYear();
+            var mm = date.getMonth()+1;
+            var dd = date.getDate();
+            if(mm < 10) mm = "0"+mm;
+            if(dd < 10) dd = "0"+dd;
+            var sYmd = yyyy+"."+mm+"."+dd
+            $("#sDt").val(sYmd);
+
+            // 게시 종료일(시작일 D+14)
+            var date2 = new Date();
+            date2.setDate(date2.getDate() + 14);
+            var yyyy2 = date2.getFullYear();
+            var mm2 = date2.getMonth()+1;
+            var dd2 = date2.getDate();
+            if(mm2 < 10) mm2 = "0"+mm2;
+            if(dd2 < 10) dd2 = "0"+dd2;
+            var eYmd = yyyy2+"."+mm2+"."+dd2
+            $("#eDt").val(eYmd);
+        }
+
+        function setForm(){
+            // 공지구분
+            $("#ntdiv").kendoDropDownList({
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0
+            });
+            // 게시 시작일
+            $("#sDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd",
+                change: function() {
+                    var begDate = $("#sDt").val();
+                    var endDate = $("#eDt").val();
+
+                    if (begDate) {
+                        $("#eDt").data("kendoDatePicker").min(begDate);
+                    } else if (endDate) {
+                        $("#sDt").data("kendoDatePicker").max(endDate);
+                    } else {
+                        $("#sDt").data("kendoDatePicker").max(endDate);
+                        $("#eDt").data("kendoDatePicker").min(begDate);
+                    }
+                },
+                min: kendo.date.today()
+            });
+            // 게시 종료일
+            $("#eDt").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM.dd",
+                change: function() {
+                    var endDate = $("#eDt").val();
+                    var begDate = $("#sDt").val();
+
+                    if (endDate) {
+                        $("#sDt").data("kendoDatePicker").max(endDate);
+                    } else if (begDate) {
+                        $("#eDt").data("kendoDatePicker").min(begDate);
+                    } else {
+                        endDate = new Date();
+                        $("#sDt").data("kendoDatePicker").max(endDate);
+                        $("#eDt").data("kendoDatePicker").min(begDate);
+                    }
+                },
+                min: kendo.date.today() // 시작일 이후부터 searchBox 표시
+            });
+        }
+
+        function getListbox(flag){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_04');
+            cfc.addParam('IV_GRPID', 'MSP006', false);
+            cfc.addParam('IV_SPRAS', '3', false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    var combobox_CT_NTDIV = $("#ntdiv").data("kendoDropDownList");
+                    combobox_CT_NTDIV.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                    if(flag == 'C'){
+                        combobox_CT_NTDIV.select(0);
+                    }else{
+                        combobox_CT_NTDIV.select(function(dataItem){
+                            return dataItem.dcdid === $("#ntdiv").val();
+                        });
+                    }
+                }
+            });
+        }
+
+        <% if PA_AUTH eq 'X'. %>
+        function reqApprove(){
+            csInfo[0].seqno = seq;
+            csInfo[0].title = $("#title").val();
+            csInfo[0].ntdiv = $("#ntdiv").data("kendoDropDownList").value();
+            var str = $("#editor").val()
+            str = str.replace(/(?:\r\n|\r|\n)/g, '#');
+            csInfo[0].ntcnt = str;
+            csInfo[0].ntfrd = $("#sDt").val().replace(/\./g, "");
+            csInfo[0].nttod = $("#eDt").val().replace(/\./g, "");
+            csInfo[0].objo1 = $("#obj01").val();
+            csInfo[0].objo2 = $("#obj02").val();
+            csInfo[0].objo3 = $("#obj03").val();
+            csInfo[0].objo4 = $("#obj04").val();
+            csInfo[0].fname1 = $("#fname1").val();
+            csInfo[0].fname2 = $("#fname2").val();
+            csInfo[0].fname3 = $("#fname3").val();
+            csInfo[0].fname4 = $("#fname4").val();
+            csInfo[0].url1 = $("#uri1").val();
+            csInfo[0].url2 = $("#uri2").val();
+            csInfo[0].url3 = $("#uri3").val();
+            csInfo[0].url4 = $("#uri4").val();
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF219_03');
+            cfc.addParam('IV_PROCDIV', pageCmd, false);
+
+            cfc.addParam('CT_LIST', csInfo, true);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    alert(data.EV_MSG);
+                    if(data.EV_SUBRC == "00" || data.EV_SUBRC == ""){
+                        callBackFunc(window.opener, 'callBack', ['']);
+                        self.close();
+                    }
+                },
+                error: function () {
+                    alert("error");
+                }
+            });
+        }
+        <% endif. %>
+    </script>
+</head>
+<body>
+
+
+<div class="popup">
+
+    <h2 class="pop-tit">공지사항</h2>
+    <div class="pop-con">
+        <div class="hd-sch">
+            <span class="tit-tx" style="width:15%;">제목</span>
+            <input id="title" type="text" class="input" style="width:435px;">
+        </div>
+        <div class="hd-sch">
+            <span class="tit-tx" style="width:15%;">공지구분</span>
+            <input type="hidden" id="ntdiv" style="width: 100px" />
+            <span class="tit-tx" style="width:15%;">게시기간</span>
+            <input type="text" id="sDt" />
+            ~
+            <input type="text" id="eDt" />
+        </div>
+
+        <div class="row-bx">
+            <div id="example">
+                <textarea id="editor" style="height:250px; width:100%; resize: none;"></textarea>
+                <form method="post" action="/kendo-ui/upload/submit">
+                    <table id="fileTB" style="margin:10px">
+                        <th rowspan="5" style="width: 20%">첨부파일</th>
+                        <tr style="height: 35px">
+                            <td id="file1_attach">
+                                <span id="file1" class="btn btn-default auth"><i class="fa fa-paperclip"></i> 파일추가1</span>
+                                <input type="hidden" name="obj01" id="obj01" />
+                                <input type="hidden" name="fname1" id="fname1" />
+                                <input type="hidden" name="uri1" id="uri1" />
+                            </td>
+                        </tr>
+                        <tr style="height: 35px">
+                            <td id="file2_attach">
+                                <span id="file2" class="btn btn-default auth"><i class="fa fa-paperclip"></i> 파일추가2</span>
+                                <input type="hidden" name="obj02" id="obj02" />
+                                <input type="hidden" name="fname2" id="fname2" />
+                                <input type="hidden" name="uri2" id="uri2" />
+                            </td>
+                        </tr>
+                        <tr style="height: 35px">
+                            <td id="file3_attach">
+                                <span id="file3" class="btn btn-default auth"><i class="fa fa-paperclip"></i> 파일추가3</span>
+                                <input type="hidden" name="obj03" id="obj03" />
+                                <input type="hidden" name="fname3" id="fname3" />
+                                <input type="hidden" name="uri3" id="uri3" />
+                            </td>
+                        </tr>
+                        <tr style="height: 35px">
+                            <td id="file4_attach">
+                                <span id="file4" class="btn btn-default auth"><i class="fa fa-paperclip"></i> 파일추가4</span>
+                                <input type="hidden" name="obj04" id="obj04" />
+                                <input type="hidden" name="fname4" id="fname4" />
+                                <input type="hidden" name="uri4" id="uri4" />
+                            </td>
+                        </tr>
+                    </table>
+                </form>
+            </div>
+        </div>
+        <div class="btn-box r">
+            <% if PA_AUTH eq 'X'. %>
+            <a id="saveBtn" class="btn btn-blue"><i class="fa fa-floppy-o"></i> 저장</a>
+            <% endif. %>
+        </div>
+    </div>
+    <a href="javascript:self.close();" class="bt-close"><span>닫기</span></button>
+</div>
+
+</body>
+</html>
