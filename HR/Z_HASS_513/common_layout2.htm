@@ -1,0 +1,310 @@
+<%@page language="abap"%>
+
+<script src="../Z_ESS_021/js/BaseClass.js"></script>
+<script src="../Z_ESS_021/js/DisplayClass.js"></script>
+<script>
+    var app;
+  var csInfo = '<%=CS_INFO%>';
+  var pageCmd = '<%=pageCmd%>';
+
+    $(document).ready(function() {
+          csInfo = typeof csInfo == 'object' ? csInfo : $.parseJSON(csInfo);
+
+          var navi = {
+              lv1: '근무관리',
+              lv2: '연장근로(서비스)',
+              lv3: '조회'
+          };
+          if (pageCmd == "CA") navi.lv3 = "취소";
+          else if (pageCmd == "DS") navi.lv3= "삭제";
+
+          // pageCmd = D: 조회, DS: 삭제, CA: 취소
+          app = new Display(
+              $.extend(
+                  conf,
+                  list_box,
+                  {
+                      flag: '<%=FLAG%>',
+                      pageCmd: pageCmd,
+                      CS_INFO: csInfo,
+                      navi: navi,
+                      ivHass: 'X'
+                  }
+              )
+          );
+    });
+
+    var Display = DisplayClass.extend({
+        init: function(config) {
+            DisplayClass.fn.init.call(this, config);
+        },
+
+        getCallFuncParams: function(ac) {
+            var cfc = new CallFuncClass();
+            switch (ac) {
+                case this.GET_DISPLAY_DATA  :
+                    cfc.setFuncName('Z_HR_SV_GET_DISPLAY_DATA');
+                    cfc.addParam('IV_PERNR', '', false);
+                    cfc.addParam('IV_REGION', this.config.CS_INFO.region, false);
+                    cfc.addParam('IV_OFFICE', this.config.CS_INFO.office, false);
+                    //cfc.addParam('IV_FLAG', this.config.flag, false);
+                    cfc.addParam('IV_FLAG', 'R', false);
+                    cfc.addParam('IV_HASS', this.config.ivHass, false);
+                    cfc.addParam('CS_INFO', this.config.CS_INFO, true);
+                    break;
+                case this.CANCEL  :
+                    cfc.setFuncName('Z_HR_SV_CANCEL');
+                    cfc.addParam('IV_APPID', this.config.CS_INFO.appid, false);
+                    cfc.addParam('IS_LIST', this.config.CS_INFO, true);
+                    cfc.addParam('IV_PERNR', '', false);
+                    break;
+                case this.DELETE  :
+                    cfc.setFuncName('Z_HR_SV_DELETE');
+                    cfc.addParam('IV_APPID', this.config.CS_INFO.appid, false);
+                    break;
+            }
+            return cfc.getData();
+        },
+
+        loadDataExt: function() {
+            setGrid(this.rData.ET_PLIST);
+        },
+        initEventExt: function(me, data) {
+            // 이전화면
+            $("#backBtn").click(function() {
+                sendForm("default.htm", {});
+            });
+
+            // 라인조회
+            $("#displayLineBtn").click(function() {
+                openLinePopup('D');
+            });
+
+            // 취소
+            $("#cancelBtn").click(function() {
+                app.reqCancel();
+            });
+
+            // 삭제
+            $("#deleteBtn").click(function() {
+                app.reqDelete();
+            });
+        }
+    });
+
+    // 파일
+    function setFile(data, fId) {
+        app.setFile(data, fId);
+    }
+
+    // 인원 추가/수정/조회 팝업
+    function openLinePopup(flag) {
+        var csInfo_param;
+        var uid = '';
+
+        if (flag == 'U' || flag == 'D') { // 수정/조회
+            var dataItem = grid.dataItem(grid.select());
+            if (dataItem == null) {
+                alert("라인을 선택해 주시기 바랍니다.");
+                return;
+            } else {
+                csInfo_param = dataItem;
+                // \n 깨짐 방지
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\n/gi, "\\\n");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\n/gi, "\\\n");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\n/gi, "\\\n");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\n/gi, "\\\n");
+
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\r/gi, "");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\r/gi, "");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\r/gi, "");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\r/gi, "");
+
+                csInfo_param.zwork = csInfo_param.zwork.replace(/\t/gi, " ");
+                csInfo_param.zgoal = csInfo_param.zgoal.replace(/\t/gi, " ");
+                csInfo_param.zremark = csInfo_param.zremark.replace(/\t/gi, " ");
+                csInfo_param.adesc = csInfo_param.adesc.replace(/\t/gi, " ");
+
+                uid = dataItem.uid;
+            }
+
+        }
+          sendFormPopup('../Z_HASS_513/pop.htm','popup', {
+              'CS_INFO': kendo.stringify(csInfo_param),
+              'LIST_BOX': kendo.stringify(list_box),
+              'FLAG': flag,
+              'IT_PLIST': '', // 조회모드에서는 필요X
+              'uid': uid
+          }, 1100, 500);
+  }
+
+
+</script>
+
+    <section id="container">
+  <script type="text/x-kendo-template" id="viewTemplate">
+        <div class="location">
+            <span class="home">Home</span>
+            <span>#= navi.lv1 #</span>
+            <strong>#= navi.lv2 #</strong>
+        </div>
+        <!-- contents -->
+        <article id="contents">
+            <!-- title -->
+            <h3>#= navi.lv1 #</h3>
+            <!-- //title -->
+
+            <!-- title -->
+            <h4>#= navi.lv2 #</h4>
+            <!-- //title -->
+
+            <!-- title -->
+            <h5>잔업/특근 신청 #= navi.lv3 #</h5>
+            <!-- //title -->
+
+            <!-- button -->
+            <div class="btn_wrap">
+              # if (pageCmd == 'CA') { #
+                <button type="button" class="btn_basic_b" id="cancelBtn">취소</button>
+              # } #
+
+              # if (pageCmd == 'DS') { #
+                <button type="button" class="btn_basic_b" id="deleteBtn">삭제</button>
+              # } #
+
+                <button type="button" class="btn_basic" id="backBtn">이전화면</button>
+            </div>
+            <!-- //button -->
+
+            <!-- form -->
+            <div class="form_box">
+                <table class="form_basic">
+                    <colgroup>
+                        <col width="17%"/>
+                        <col width="30%"/>
+                        <col width="17%"/>
+                        <col width="*"/>
+                    </colgroup>
+                    <tbody>
+                        <tr>
+                            <th scope="row">신청일</th>
+                            <td colspan="3"><input type="text" class="k-textbox" value="#=kendo.toString(kendo.parseDate(CS_INFO.reqdt, 'yyyyMMdd'), 'yyyy.MM.dd')#" readonly="readonly" /></td>
+                        </tr>
+                        <tr>
+                            <!-- 신청 화면만 잔업/특근일 선택 가능 -->
+                            <th scope="row">잔업/특근일 <span class="astro">*</span></th>
+                            <td>
+                                <input type="text" id="datum" class="k-textbox" value="#=kendo.toString(kendo.parseDate(CS_INFO.datum, 'yyyyMMdd'), 'yyyy.MM.dd')#" readonly="readonly"  />
+                            </td>
+                            <th scope="row">구분</th>
+                            <td>
+                                <input id="ET_HFLAG" class="w_50per dropdownlist disabled" disabled value="#= CS_INFO.hflag #" name="hflag"/>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">사업소</th>
+                            <td>
+<%--                                <input class="w_50per disabled dropdownlist" disabled value="#= CS_INFO.region #" id="ET_REGION" name="region" />--%>
+                                <input type="hidden" value="#= CS_INFO.region #" id="ET_REGION" name="region" />
+                                <input type="text" class="w_50per k-textbox" value="#= CS_INFO.regiontx #" readonly="readonly" />
+                            </td>
+                            <th scope="row">팀</th>
+                            <td>
+<%--                                <input class="w_50per disabled dropdownlist" disabled value="#= CS_INFO.office #" id="ET_OFFICE" name="office" />--%>
+                                <input type="hidden" value="#= CS_INFO.office #" id="ET_OFFICE" name="office" />
+                                <input type="text" class="w_50per k-textbox" value="#= CS_INFO.officetx #" readonly="readonly" />
+                            </td>
+                        </tr>
+                        # if (CS_INFO.rdesc != null && CS_INFO.rdesc != '') { #
+                        <tr>
+                            <th scope="row">반려사유</th>
+                            <td colspan="3">
+                                <input type="text" class="all k-textbox" value="#=CS_INFO.rdesc#" readonly="readonly">
+                            </td>
+                        </tr>
+                        #}#
+                        <tr>
+                            <th scope="row">총시간</th>
+                            <td colspan="3"><input type="text" class="k-textbox" value="#= CS_INFO.evttx #" readonly="readonly"></td>
+                        </tr>
+                    </tbody>
+                    <tbody>
+                        #
+                        if (FILE_LIST.length > 0) {
+                        #
+                        <tr id="file_area">
+                            <th>파일첨부</th>
+                            <td id="file_box" class="file_box" colspan="3">
+                                <table>
+                                    <colgroup>
+                                        <col width='10%'/>
+                                        <col width='*'/>
+                                    </colgroup>
+                                    #
+                                    for (var i = 0; i < FILE_LIST.length; i++) {
+                                    var id = FILE_LIST[i].id;
+                                    var findFileId = 'findFile' + id;
+                                    var delFileId = 'delFile' + id;
+
+                                    var fileId = 'file' + id;
+                                    var objoId = 'obj0' + id;
+                                    var fnameId = 'fname' + id;
+                                    var uriId = 'uri' + id;
+
+                                    var visibility = 'visibility: hidden';
+                                    if (CS_INFO[uriId] != '' && CS_INFO[uriId] != undefined) {
+                                        visibility = 'visibility: visible';
+                                    }
+                                    #
+                                    <tr>
+                                        <th>#= FILE_LIST[i].name #</th>
+                                        <td>
+                                            <a href="#= CS_INFO[uriId] == '' ? '\\#' : CS_INFO[uriId] #" id="#= fileId #" style="#= visibility #" target="_blank">#= CS_INFO[fnameId] #</a>
+                                            <input type="hidden" id="#= objoId #" name="#= objoId #" value="#= CS_INFO[objoId] #" />
+                                            <input type="hidden" id="#= fnameId #" name="#= fnameId #" value="#= CS_INFO[fnameId] #" />
+                                            <input type="hidden" id="#= uriId #" name="#= uriId #" value="#= CS_INFO[uriId] #" />
+                                        </td>
+                                    </tr>
+                                    #}#
+                                </table>
+                            </td>
+                        </tr>
+                        #}#
+                    </tbody>
+                </table>
+            </div>
+            <!-- //form -->
+
+            <!-- button -->
+            <div class="btn_wrap_l">
+                <button type="button" class="btn_basic" id="displayLineBtn">조회</button>
+            </div>
+            <!-- //button -->
+
+            <!-- list -->
+          <div id="grid"></div>
+            <!-- /list -->
+
+            <!-- title -->
+            <h5>결재라인</h5>
+            <!-- //title -->
+
+            <!-- approve -->
+            <div class="approve_box">
+                <div class="tb_box">
+                    <h6>신청부서</h6>
+                    <div id="ET_LINE1" class="mb_15"></div>
+                </div>
+
+                <div class="tb_box">
+                    <h6>담당부서</h6>
+                    <div id="ET_LINE2" class="mb_15"></div>
+                </div>
+            </div>
+            <!-- //approve -->
+
+        </article>
+        <!-- //contents -->
+
+  </script>
+</section>
