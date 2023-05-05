@@ -1,0 +1,460 @@
+<%@page language="ABAP" %>
+<div class="tabmain">
+    <script>
+        var dataSource5, grid5,SheetData5, sDt5;
+        var year5 = kendo.toString(new Date(), 'yyyy');
+        var month5 = kendo.toString(new Date(), 'MM');
+
+        $.makeTab5 = function(obj) {
+            if(obj != 'L') {
+                $("#sDt5").val(currDate);
+                initCreate5('S');
+            } else {
+                setForm5();
+                setButton5();
+                initCreate5('');
+            }
+            getListbox5();
+        };
+// =============================================================================================================================================
+        function initCreate5(type) {
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: getCreateData5(type),
+                type: "POST",
+                success: function(data) {
+                    setCreate5(data,type);
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container5"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container5"), false);
+                }
+            });
+        }
+
+        function getCreateData5(type) {     /* 변동 상세현황(차종+제품별) */
+            sDt5 = $("#sDt5").val().replace(/\./g, '');
+
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF231_06");
+            cfc.addParam('I_SPMON', sDt5, false);
+            cfc.addParam('I_CARTP', $("#pcrtp5").data("kendoDropDownList").value(), false);
+            // 2018.10.16 제품군(소) 기준
+            // cfc.addParam('I_DCDID_02', $("#div025").data("kendoDropDownList").value(), false);
+            // cfc.addParam('I_DCDID_03', '', false);
+            cfc.addParam('I_DCDID_02', '', false);
+            cfc.addParam('I_DCDID_03', $("#div035").data("kendoDropDownList").value(), false);
+            cfc.addParam('I_DCDID_PLT', $("#pltcd5").data("kendoDropDownList").value(), false);
+            cfc.addParam('ET_LIST','',false);
+
+            return cfc.getData();
+        }
+
+        function setCreate5(data,type) {
+            if(type == 'S'){
+                $("#grid5").empty();
+            }
+            setGrid5(data);
+            $("#gridCnt5").text(data.ET_LIST.length);
+            //if(data.ET_LIST.length == 0) {
+            //  alert('일치하는 데이터가 없습니다.')
+            //}
+        }
+// =============================================================================================================================================
+        function setForm5(){
+            $("#sDt5").val(currDate);
+            $("#sDt5").kendoDatePicker({
+                culture: "ko-KR",
+                format: "yyyy.MM",
+                start:"year",
+                depth:"year"
+            });
+
+            //차종
+            $("#pcrtp5").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                open: adjustDropDownWidth,
+                index:0
+            });
+            // 2018.10.16 제품군(소) 기준
+            /*$("#div025").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0
+            });*/
+            // 제품군(소) 기준
+            $("#div035").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0
+            });
+            // 생산공장
+            $("#pltcd5").kendoDropDownList({
+                template: '<span style="font-weight:bold">#= value #</span> #= text #',
+                valueTemplate: '<span class="selected-value" style="font-weight:bold">#= value #</span><span> #= text#</span>',
+                dataTextField: "text",
+                dataValueField: "value",
+                index:0
+            });
+
+            // 2018.11.06 dropdownlist adjust width automatically
+            var pcrtp5DropDown = $("#pcrtp5").data("kendoDropDownList");
+            pcrtp5DropDown.list.width("auto");
+        }
+
+        function getListbox5(){         /* 국내 검색 조건 */
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF231_00');
+            cfc.addParam('IV_UNAME', '', false);
+            cfc.addParam('CT_DIV02', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    // 2018.10.16 제품군(소) 기준
+                    // var combobox_CT_DIV02 = $("#div025").data("kendoDropDownList");
+                    // data.CT_DIV02.unshift({value:'',text:'All'});
+                    // combobox_CT_DIV02.setDataSource(new kendo.data.DataSource({data:data.CT_DIV02}));
+                    // combobox_CT_DIV02.select(0);
+                    // 제품군(소)
+                    var combobox_CT_DIV03 = $("#div035").data("kendoDropDownList");
+                    data.CT_DIV03.unshift({value:'',text:'All'});
+                    combobox_CT_DIV03.setDataSource(new kendo.data.DataSource({data:data.CT_DIV03}));
+                    combobox_CT_DIV03.select(0);
+                    // 차종
+                    var combobox_CARTP = $("#pcrtp5").data("kendoDropDownList");
+                    data.CT_CARTP.unshift({value:'',text:'All'});
+                    combobox_CARTP.setDataSource(new kendo.data.DataSource({data:data.CT_CARTP}));
+                    combobox_CARTP.select(0);
+                    // 생산공장
+                    var combobox_CT_PLTCD = $("#pltcd5").data("kendoDropDownList");
+                    data.CT_PLT.unshift({value:'',text:'All'});
+                    combobox_CT_PLTCD.setDataSource(new kendo.data.DataSource({data:data.CT_PLT}));
+                    combobox_CT_PLTCD.select(0);
+                }
+            });
+        }
+
+        function setButton5(){
+            $("#searchBtn5").click(function(e){
+                initCreate5('S');
+            });
+            // 엑셀
+            $("#excelBtn5").click(function(e) {
+                var xlsTpl = kendo.template($('#xlsTpl5').html());
+                var excelData = grid5.dataSource.data();
+                $.makeExcel(xlsTpl, excelData, "판매가_재료비_변동상세현황_차종_제품군별");
+            });
+        }
+
+        function setGrid5(data) {
+            var date = $("#sDt5").val();
+            dataSource5 = new kendo.data.DataSource({
+                type: "json",
+                data: data,
+                schema: {
+                    data: "ET_LIST",
+                    total: "ET_LIST.length",
+                    model: {
+                        fields: {
+                        }
+                    }
+                }
+            });
+
+            grid5 = $("#grid5").kendoGrid({
+                dataSource: dataSource5,
+                autoBind: true,
+                height:602,
+                selectable:true,
+                scrollable:true,
+                sortable: false,
+                resizable: true,
+                pageable: false,
+                navigatable: true,
+                filterable:false,
+                columns: [
+                    // { field: "sopmm", title: "SOP<br>(년/월)", width:90, locked:true , template: "#= subTotal5(cartp, sopmm) #"},
+                    // { field: "pcrtp", title: "차종", width:90, locked:true, template: "#= total5(cartp, pcrtp) #" },
+                    { field: "sopmm", title: "SOP<br>(년/월)", width:90, locked:true , template: "#= total5(cartp, sopmm) #"},
+                    { field: "pcrtp", title: "차종", width:90, locked:true, template: "#= subTotal5(cartp, pcrtp) #" },
+                    { field: "dcdnm_03", title: "제품군<br>(소)", width:90, locked:true },
+                    { field: "dcdnm_plt", title: "생산공장", width:90, locked:true},
+                    { field: "waerl", title: "환종", width:90},
+                    { title: "초도가", columns:[
+                        { field: "sop3m_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(sop3m_01) #"  },
+                        { field: "sop3m_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(sop3m_02) #" }
+                    ]},
+                    { title: "현재가 ("+date+")", columns:[
+                        { field: "ctprc_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(ctprc_01) #"  },
+                        { field: "ctprc_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(ctprc_02) #" }
+                    ]},
+                    { title: "변동금액 (현재가-초도가)", columns:[
+                        { field: "scamt_01", title: "판매가", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scamt_01) #"  },
+                        { field: "scamt_02", title: "재료비", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scamt_02) #" }
+                    ]},
+                    { title: "손익효과", columns:[
+                        { field: "scsmt", title: "이격액", width:100, attributes:{class:"nr-right"}, template: "#= repStr(scsmt) #"  },
+                        { field: "scsrt", title: "이격률", width: 100, attributes:{style:"text-align:right"}, template: "#= scsrt == '' ? '' : repStr(scsrt)+'%' #" },
+                        { field: "sc_stat", title: "상태", width: 50, attributes:{style:"text-align:center"}, template: "#= setIcon(sc_stat) #" }
+                    ]},
+                    { title: "변동사유 (판매가) ", columns:[
+                        { field: "acr01_01", title: "사양", width:100, attributes:{style:"text-align:right"}, template:"#= repStr(acr01_01) #"},
+                        { field: "acr02_01", title: "구매가", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr02_01) #"},
+                        { field: "acr03_01", title: "원자재", width:100, attributes:{style:"text-align:right"}, template:"#= repStr(acr03_01) #"},
+                        { field: "acr04_01", title: "약정 ", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr04_01) #"},
+                        { field: "acr05_01", title: "원가절감", width:100, attributes:{style:"text-align:right"},template:"#= repStr(acr05_01) #"},
+                        { field: "acr06_01", title: "환율", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr06_01) #"},
+                        { field: "acr07_01", title: "CKD", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr07_01) #"},
+                        { field: "acr99_01", title: "기타", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr99_01) #"},
+                        { field: "acr_tot_01", title: "합계", width:100,attributes:{style:"text-align:right"}, template: "#= repStr(acr_tot_01) #"}
+                    ]},
+                    { title: "변동사유 (재료비)", columns:[
+                        { field: "acr01_02", title: "사양", width:100, attributes:{style:"text-align:right"}, template:"#= repStr(acr01_02) #"},
+                        { field: "acr02_02", title: "구매가", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr02_02) #"},
+                        { field: "acr03_02", title: "원자재", width:100, attributes:{style:"text-align:right"}, template:"#= repStr(acr03_02) #"},
+                        { field: "acr04_02", title: "약정 ", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr04_02) #"},
+                        { field: "acr05_02", title: "원가절감", width:100, attributes:{style:"text-align:right"},template:"#= repStr(acr05_02) #"},
+                        { field: "acr06_02", title: "환율", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr06_02) #"},
+                        { field: "acr07_02", title: "CKD", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr07_02) #"},
+                        { field: "acr99_02", title: "기타", width:100,attributes:{style:"text-align:right"}, template:"#= repStr(acr99_02) #"},
+                        { field: "acr_tot_02", title: "합계", width:100,attributes:{style:"text-align:right"}, template: "#= repStr(acr_tot_02) #"}
+                    ]}
+                ],
+                dataBound:function(e){
+                    var msg = "내역이 없습니다.";
+                    var grid = e.sender;
+                    if (grid.dataSource.total() == 0) {
+                        var colCount = grid.columns.length+18;
+                        $(e.sender.wrapper)
+                        .find('tbody')
+                        .append('<tr class="kendo-data-row"><td colspan="' + colCount + '" class="no-data" style="width:100%">'+msg+'</td></tr>');
+                    } else{
+                        grid.tbody.find("tr").css("cursor","pointer");
+                    }
+
+                    // thead
+                    $("#grid5").find("tr:eq(1)").find("th:eq(4), th:eq(5), th:eq(6)").css("border-bottom", "0px");  // column line
+                    $("#grid5").find("tr:eq(1)").find("th:eq(7)").css("border-left", "0px");  // column line
+                    for(var i=7; i<27; i++) {
+                        if(i == 17 || i == 26) continue;
+                        $("#grid5").find("tr:eq(2)").find("th:eq("+i+")").css("border-top", "1px solid #dddddd");
+                    }
+
+                    // tbody total
+                    $('.subTotal').parents('td').attr("colspan", "3");
+                    $('.subTotal').parents('td').css("border-left", "solid 0px #f7f7f7");
+                    $('.total').parents('td').attr("colspan", "4");
+                    $('.total').parents('td').css("background-color", "#fafafa");
+
+                    var rows = e.sender.tbody.children();
+                    if(rows.length > 1) {
+                        for (var j = 0; j < rows.length; j++) {
+                            var row = $(rows[j]);
+
+                            var dataItem = e.sender.dataItem(row);
+                            var type = dataItem.get("cartp");
+
+                            if(type == "Total") {
+                                $(".k-grid-content").find("tr:eq("+j+")").css("background-color","#fafafa");
+                            }
+                        }
+                    }
+
+                    // tbody locked columns rowspan
+                    for(var i = 0; i < 3; i++){
+                        $("#grid5").rowspan(i);
+                    }
+                }
+            }).data("kendoGrid")
+        }
+
+        // function repStr5(str){
+        //     if(str.indexOf('NC',0) != -1) {
+        //         str = str.replace('NC', '가단가');
+        //         str = "<span style='color:red'>"+str+"</span>";
+        //     } else if(str.indexOf('CE',0) != -1) {
+        //         str = str.replace('CE', '현재가 누락');
+        //         str = "<span style='color:blue'>"+str+"</span>";
+        //     } else if(str.indexOf('-',0) != -1) {
+        //         str = str.replace('-','▲');
+        //         //str = "<span style='color:red'>"+str+"</span>";
+        //         str = "<span>"+str+"</span>";
+        //     }
+        //     return str
+        // }
+
+        // function setIcon5(data) {           /* 상태별 아이콘 */
+        //     switch(data) {
+        //         case 'Y' :
+        //             return '<span style="color:yellow; font-size:20px;">'+ '●' +'</span>';
+        //         case 'G' :
+        //             return '<span style="color:green; font-size:20px;">'+ '●' +'</span>';
+        //         case 'R' :
+        //             return '<span style="color:red; font-size:20px;">'+ '●' +'</span>';
+        //         default  :
+        //             return '<span>'+data+'</span>';
+        //     }
+        // }
+
+        function subTotal5(id, name) {      /* subTotal 계산 */
+            if(id.indexOf("SUM") != -1) {
+                return '<span class=subTotal>차종 합계</span>';
+            } else {
+                return '<span>'+name+'</span>';
+                // return '<span>'+kendo.toString(kendo.parseDate(name, 'yyyyMM'), 'yyyy.MM')+'</span>';
+            }
+        }
+
+        function total5(id, name) {         /* total 계산 */
+            if(id.indexOf("Total") != -1) {
+                return '<span class=total>합계</span>';
+            } else {
+                return '<span>'+kendo.toString(kendo.parseDate(name, 'yyyyMM'), 'yyyy.MM')+'</span>';
+            }
+        }
+    </script>
+
+    <div id="container5" class="tabContainer" style="padding:0; min-width:1230px;">
+        <!-- 2018.11.01 IE 화면 사이즈 조절-->
+        <h2 class="h2-tit" style="margin-bottom: 10px;">판매가/재료비 변동 상세현황(차종+제품별) </h2>
+        <div class="hd-sch" style="margin-bottom: 10px;">
+            <div class="dis-in txKeep">
+                <span  class="tit-tx">현재기준</span>
+                <input type="text" id="sDt5"  class="header_sch" style="width:150px;" />
+                <span class="tit-tx" style="margin:0 -30px 0 20px;">차종</span>
+                <input type="hidden" id="pcrtp5" class="header_sch"  style="width:150px"/>
+                <!-- // 2018.10.16 제품군(소) 기준 -->
+                <!-- <span class="tit-tx" style="margin-right:20px;">제품구분(중분류)</span>
+                <input type="hidden" id="div025" class="header_sch" style="width:100px;" /> -->
+                <span class="tit-tx" style="margin-right:20px;">제품군(소)</span>
+                <input type="hidden" id="div035" class="header_sch" style="width:150px;" />
+                <span class="tit-tx">생산공장</span>
+                <input type="hidden" id="pltcd5" class="header_sch" style="width:150px;"/>
+            </div>
+            <div class="right" style="padding-right:20px;">
+                <a id="searchBtn5" class="btn btn-blue"><i class="fa fa-search"></i> 조회</a>
+                <a id="excelBtn5" class="btn btn-blue"><i class="fa fa-download"></i> 엑셀</a>
+            </div>
+        </div>
+        <!-- <div style="text-align:right; padding-bottom:3px;">
+                <span style="padding-right:10px;">환종선택</span>
+                <input type="hidden" id="pltcd5" class="header_sch" style="width:100px;"/>
+            </div> -->
+
+        <!--// 2018.11.08 message 추가 -->
+        <div class="hd-sch" style="padding:0 164px 0 0; margin-bottom:0px;">
+            <div class="dis-in txKeep">
+                <span style="font-weight:bold">
+                ※<span style="color:blue">현재가 누락</span>또는<span style="color:red">가단가</span>일 경우 합계 제외
+                </span>
+            </div>
+        </div>
+
+        <div class="row-bx" style="padding:0px;">
+            <div id="grid5"></div>
+        </div>
+    </div>
+</div>
+<script type="text/x-kendo-template" id="xlsTpl5">
+    <table class="list_sub">
+    <thead>
+        <tr>
+          <th rowspan="2">SOP (년/월)</th>
+          <th rowspan="2">차종</th>
+          <th rowspan="2">제품군 (소)</th>
+          <th rowspan="2">생산공장</th>
+            <th rowspan="2">환종</th>
+            <th colspan="2">초도가</th>
+            <th colspan="2">현재가 (#= sDt5.substr(0,4)+"."+sDt5.substr(4,6) #)</th>
+            <th colspan="2">변동금액 (현재가-초도가)</th>
+            <th colspan="2">손익효과</th>
+            <th colspan="9">변동사유 (판매가)</th>
+            <th colspan="9">변동사유 (재료비)</th>
+        </tr>
+        <tr>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>판매가</th>
+            <th>재료비</th>
+            <th>이격액</th>
+            <th>이격률</th>
+            <th>사양</th>
+            <th>구매가</th>
+            <th>원자재</th>
+            <th>약정</th>
+            <th>원가절감</th>
+            <th>환율</th>
+            <th>CKD</th>
+            <th>기타</th>
+            <th>합계</th>
+            <th>사양</th>
+            <th>구매가</th>
+            <th>원자재</th>
+            <th>약정</th>
+            <th>원가절감</th>
+            <th>환율</th>
+            <th>CKD</th>
+            <th>기타</th>
+            <th>합계</th>
+        </tr>
+        </thead>
+        <tbody>
+        # for (var i = 0; i < rows.length; i++) { #
+            <tr>
+                <td style="text-align: center">#= (rows[i].sopmm == '') ? '합계' : kendo.toString(kendo.parseDate(rows[i].sopmm, 'yyyyMM'), 'yyyy.MM') #</td>
+                <td style="text-align: center">#= rows[i].pcrtp #</td>
+                <td style="text-align: center">#= (rows[i].dcdnm_03 == '' && rows[i].pcrtp != '') ? "차종 합계" : rows[i].dcdnm_03 #</td>
+                <td style="text-align: center">#= rows[i].dcdnm_plt #</td>
+                <td style="text-align: center">#= rows[i].waerl #</td>
+                <td style="text-align: right">#= rows[i].sop3m_01 #</td>
+                <td style="text-align: right">#= rows[i].sop3m_02 #</td>
+                <td style="text-align: right">#= rows[i].ctprc_01 #</td>
+                <td style="text-align: right">#= rows[i].ctprc_02 #</td>
+                <td style="text-align: right">#= rows[i].scamt_01 #</td>
+                <td style="text-align: right">#= rows[i].scamt_02 #</td>
+                <td style="text-align: right">#= rows[i].scsmt #</td>
+                <td style="text-align: right">#= rows[i].scsrt == '' ? '' : rows[i].scsrt +"%" #</td>
+                <td style="text-align: right">#= rows[i].acr01_01 #</td>
+                <td style="text-align: right">#= rows[i].acr02_01 #</td>
+                <td style="text-align: right">#= rows[i].acr03_01 #</td>
+                <td style="text-align: right">#= rows[i].acr04_01 #</td>
+                <td style="text-align: right">#= rows[i].acr05_01 #</td>
+                <td style="text-align: right">#= rows[i].acr06_01 #</td>
+                <td style="text-align: right">#= rows[i].acr07_01 #</td>
+                <td style="text-align: right">#= rows[i].acr99_01 #</td>
+                <td style="text-align: right">#= rows[i].acr_tot_01 #</td>
+                <td style="text-align: right">#= rows[i].acr01_02 #</td>
+                <td style="text-align: right">#= rows[i].acr02_02 #</td>
+                <td style="text-align: right">#= rows[i].acr03_02 #</td>
+                <td style="text-align: right">#= rows[i].acr04_02 #</td>
+                <td style="text-align: right">#= rows[i].acr05_02 #</td>
+                <td style="text-align: right">#= rows[i].acr06_02 #</td>
+                <td style="text-align: right">#= rows[i].acr07_02 #</td>
+                <td style="text-align: right">#= rows[i].acr99_02 #</td>
+                <td style="text-align: right">#= rows[i].acr_tot_02 #</td>
+            </tr>
+        # } #
+    </tbody>
+    </table>
+</script>
