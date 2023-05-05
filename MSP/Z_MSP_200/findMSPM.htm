@@ -1,0 +1,730 @@
+<%@page language="abap" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>전사현황</title>
+<%@include file="../z_msp_100/inc_menu.htm" %>
+    <script>
+        var grid, dataSource, gCT_LIST;
+        var seriesData, seriesData2, seriesData5, seriesData6, mainSlide, options;
+        $(document).ready(function() {
+            setForm();
+            setGrid();
+            getListbox_Loop();
+            setCreateChart();
+            getNotiList();
+            //getSpcrt();
+            $(function(){
+                var mainSlide = new Swiper('.noti-bx .slide', {
+                    direction: 'vertical',
+                    spaceBetween: 0,
+                    slidePerView:2,
+                    centeredSlides: true,
+                    loop: true,
+                    autoplay: {
+                        delay: 3000,
+                        disableOnInteraction: false,
+                    },
+                    navigation: {
+                        nextEl: '.bt-next',
+                        prevEl: '.bt-prev',
+                    },
+                });
+            });
+            $(".noti-bx .slid").mouseenter(function(){
+                mainSlide.stopAutoPlay();
+            });
+            $(".noti-bx .slid").mouseleave(function(){
+                mainSlide.startAutoPlay();
+            });
+        });
+        function setCreateChart(){
+            setCreateSeries();
+            setCreateSeries2();
+            // setCreateSeries3();
+            setCreateSeries4();
+            setCreateSeries5();
+        }
+        function getNotiList(){
+            var notiStr='';
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF219_01');
+            cfc.addParam('IV_FLAG', 'A', false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    if(data.EV_SUBRC == '00' || data.EV_SUBRC == '') {
+                        gCT_LIST = data.CT_LIST;
+                        for (var i=0 ; i<data.CT_LIST.length; i++) {
+                            if (data.CT_LIST[i].ntdiv == '02'){
+                                // 2018.11.07 flag 변경
+                                // popup(data.CT_LIST[i].seqno, data.CT_LIST[i].title, 'U', i);
+                                popup(data.CT_LIST[i].seqno, data.CT_LIST[i].title, 'R', i);
+                            }
+                            // 2018.11.07 flag 변경
+                            // notiStr = '<div class="swiper-slide">'+'<a href="javascript:void(0)" onclick="popup('+data.CT_LIST[i].seqno+',\'U\')">'+data.CT_LIST[i].title+'</a></div>';
+                            notiStr = '<div class="swiper-slide">'+'<a href="javascript:void(0)" onclick="popup('+data.CT_LIST[i].seqno+',\'R\')">'+data.CT_LIST[i].title+'</a></div>';
+                            $(".swiper-wrapper").append(notiStr);
+                            notiStr ="";
+                        }
+                    } else {
+                        notiStr = '<div style="margin-top:12px">(공지사항이 없습니다.)</div>';
+                        $(".swiper-wrapper").append(notiStr);
+                    }
+                }
+            });
+        }
+
+        function setForm(){
+              // 제품군
+            $("#gdgcd").kendoDropDownList({
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+                change: function(e){
+                    setCreateChart();
+                }
+            });
+            // 생산공장
+            $("#pltcd").kendoDropDownList({
+                dataTextField: "dcdnm",
+                dataValueField: "dcdid",
+                index:0,
+                change: function(e){
+                    setCreateChart();
+                }
+            });
+        }
+        function setGrid() {
+            var dataSource = new kendo.data.DataSource({
+                type: "json",
+                pageSize: 6,
+                transport: {
+                    read: {
+                        type: "POST",
+                        url: URL.callFunction,
+                        dataType: "jsonp",
+                        data: getListData()
+                    }
+                },
+                schema: {
+                    data : "CT_LIST",
+                    total: "CT_LIST.length",
+                    model: {
+                        fields: {
+                            ename: {type: "string"},
+                            pbtxt: {type: "string"},
+                            floor: {type: "string"}
+                        }
+                    }
+                }
+            });
+            grid = $("#grid").kendoGrid({
+                dataSource: dataSource,
+                autoBind: true,
+                height: 269,
+                scrollable:false,
+                sortable: true,          
+                resizable: true,
+                pageable: true,
+                navigatable: true,
+                selectable: true,
+                columns: [
+                    lineClick,
+                    { field: "clint", title: "OE", width:"150px"},
+                    { field: "pcrtp", title: "차종", width:"150px"},
+                    { field: "div3", title: "제품", width:"150px"},
+                    { field: "pmscd", title: "PMS Code", width:"150px"},
+                    { field: "buseo", title: "담당팀"}
+                ]
+            }).data("kendoGrid")
+            .bind("dataBound", function(e) {
+                var msg = "ERP 양산품번 신규 등록 대상 내역이 없습니다.";
+                var grid = e.sender;
+                if (grid.dataSource.total() == 0) {
+                    $(e.sender.wrapper).find('tbody')
+                            .append('<tr class="kendo-data-row"><td colspan="' + grid.columns.length + '" class="no-data">' + msg + '</td></tr>');
+                } else {
+                    grid.tbody.find("tr").css("cursor","pointer");
+                }
+                    for(var i=0; i<6; i++) {
+                       $("#grid .k-grid-header").find("tr:eq(0)").find("th:eq("+i+")").css("border-top", "1px solid #dddddd");
+                       if (i == 5) {$("#grid .k-grid-header").find("tr:eq(0)").find("th:eq("+i+")").css("border-right", "1px solid #dddddd");}
+                       if (i >= 0) {$("#grid tbody").find("tr:eq("+i+")").find("td:eq(5)").css("border-right", "1px solid #dddddd");}
+                       }
+            });
+        }
+        function getListData() {
+            var cfc = new CallFuncClass();
+            cfc.setFuncName("Z_MSP_IF208_02");
+            cfc.addParam('CT_LIST', '', false);
+            return cfc.getData();
+        }
+        function getListbox_Loop(){
+            var grpid;
+            for(var i = 0; i < 2; i++){
+                if (i == 0){ grpid = 'MSP007'}
+                if (i == 1){ grpid = 'MSP015'}
+                getGListbox(i,grpid);
+            }
+        }
+        function getGListbox(type,grpid){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF100_04');
+            cfc.addParam('IV_GRPID', grpid, false);
+            cfc.addParam('IV_SPRAS', dsUserInfo.spras, false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                async: false,
+                success: function(data) {
+                    getDropdownList(type,data);
+                }
+            });
+        }
+        function getDropdownList(type,data){
+            if(type == 0){
+                // 제품군 MSP007
+                var combobox_CT_DIV02 = $("#gdgcd").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_CT_DIV02.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_CT_DIV02.select(0);
+            } else if(type == 1){
+                // 생산지 MSP015
+                var combobox_CT_PLTCD = $("#pltcd").data("kendoDropDownList");
+                data.CT_LIST.unshift({dcdid:'',dcdnm:'All',grpid:''});
+                combobox_CT_PLTCD.setDataSource(new kendo.data.DataSource({data:data.CT_LIST}));
+                combobox_CT_PLTCD.select(0);
+            }
+        }
+        function popup(seq,title,flag,sit) {
+            flag = flag == '' ? 'C' : flag
+            var popupUrl = (flag == 'C')? "../Z_MSP_219/create.htm" : "../Z_MSP_219/display.htm";
+            var popupWidth = 580;
+            var popupHeight = 650;
+            sendFormPopup(popupUrl,'popupDis', {
+                        'PA_SEQNO': seq,
+                        'PA_FLAG' : flag,
+                    }, popupWidth, popupHeight);
+        }
+        function setCreateSeries(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF200_08');
+            cfc.addParam('IV_PLTCD', $("#pltcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_GDGCD', $("#gdgcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.EV_SUBRC == "00" || data.EV_SUBRC == "") {
+                        setChart(data);
+                    } else {
+                        $("#chart").kendoChart();
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart(data){
+            seriesData = data.CT_LIST;
+            for(var i = 0; i < seriesData.length; i++){
+                seriesData[i].color = color()[i];
+            }
+            $("#chart").kendoChart({
+                dataSource:{
+                    data:seriesData
+                },
+                title: {
+                },
+                chartArea: {
+                    height: 298,
+                    margin:0
+                },
+                panes:{
+                    margin: {
+                      left:100
+                    }
+                },
+                legend: {
+                    //position: "bottom"
+                    visible: false
+                },
+                seriesDefaults:{
+                    type: "donut",
+                    // size: 30,
+                    startAngle:150
+                },
+                series: [{
+                    field: "gdgcd_cnt",
+                    categoryField: "gdgnm",
+                    labels: {
+                        template: "#= category # #= dataItem.gdgcd_cnt #",
+                        background: "transparent",
+                        visible: true,
+                        color: "white",
+                        font:"13px"
+                    }
+                }],
+                plotArea: {
+                    margin:-30
+                },
+                tooltip:{
+                    template: "#= category #:\n #= kendo.format('{0:P}', percentage)# (#= dataItem.gdgcd_cnt #)",
+                    visible:true
+                }
+            });
+            if (seriesData.length > 0) {
+                var text = "총 "+ seriesData[0].tot_gdgcd_cnt+"제품";
+            } else {
+                var text = "총 0제품";
+            }
+            $(".inner-content").text(text);
+        }
+        function setCreateSeries2(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF200_09');
+            cfc.addParam('IV_PLTCD', $("#pltcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_GDGCD', $("#gdgcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.EV_SUBRC == "00" || data.EV_SUBRC == "") {
+                        setChart2(data);
+                    } else {
+                        $("#chart2").kendoChart();
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart2(data){
+            seriesData2 = data.CT_LIST;
+            for(var i = 0; i < seriesData2.length; i++){
+                seriesData2[i].color = color()[i];
+            }
+            $("#chart2").kendoChart({
+                dataSource:{
+                    data:seriesData2
+                },
+                title: {
+                },chartArea: {
+                    height: 298
+                },
+                legend: {
+                    position: "false"
+                },
+                series: [{
+                        type: "column",
+                        data: seriesData2,
+                        field: "lcdiv_gdgcd_cnt",
+                        categoryField: "lcdiv",
+                        labels: {
+                            visible: true,
+                            font:"13px"
+                        },
+                    }],
+                categoryAxis: {
+                    categories: "",
+                    majorGridLines: {
+                        visible: false
+                    }
+                },
+                valueAxis: [{
+                    majorGridLines: {
+                        visible: false
+                    }
+                }],
+                tooltip:{
+                    visible:true,
+                    template:  "#= dataItem.rate #%"
+                }
+            });
+        }
+        function setCreateSeries4(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF200_11');
+            cfc.addParam('IV_PLTCD', $("#pltcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_GDGCD', $("#gdgcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",              
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.EV_SUBRC == "00" || data.EV_SUBRC == "") {
+                        setChart4(data);
+                    } else {
+                        $("#chart4").kendoChart();
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart4(data){
+            seriesData4 = data.CT_LIST;
+            var tmpArr1 = [];
+            var tmpArr2 = [];
+            for(var i = 0; i < data.CT_LIST.length; i++){
+                if(data.CT_LIST[i].smdiv == '01'){
+                    tmpArr1.push(data.CT_LIST[i]);
+                }else if(data.CT_LIST[i].smdiv == '02'){
+                    tmpArr2.push(data.CT_LIST[i]);
+                }
+            }
+            for(var i = 0; i < tmpArr1.length; i++){
+                if(tmpArr1[i].rlidc == ""){
+                    delete tmpArr1[i].rlidc
+                }
+            }
+            for(var i = 0; i < tmpArr2.length; i++){
+                if(tmpArr2[i].rlidc == ""){
+                    delete tmpArr2[i].rlidc
+                }
+            }
+            $("#chart4").kendoChart({
+                title: {
+                },
+                legend: {
+                    position: "bottom",
+                    visible: true,
+                    margin:"0px"
+                },
+                seriesDefaults:{
+                    type: "line"
+                },chartArea: {
+                    height: 298
+                },
+                series: [{
+                    data:tmpArr1,
+                    field: "rlidc",
+                    categoryField: "pstep",
+                    name: tmpArr1[0].smdivtx
+                },{
+                    data:tmpArr2,
+                    field: "rlidc",
+                    categoryField: "pstep",
+                    name: tmpArr2[0].smdivtx
+                }],
+                categoryAxis: {
+                    majorGridLines: {
+                        visible: false
+                    },
+                    labels:{
+                        template: labelTemplate
+                    }
+                },
+                valueAxis: [{
+                    // max: 140,
+                    // min:40,
+                    majorGridLines: {
+                        visible: false,
+                    },
+                    labels: {
+                        visible: true,
+                    },
+                }],
+                tooltip: {
+                    visible: true,
+                    template: "#= category #:#= dataItem.rlidc #%"
+                }
+            });
+        }
+        function labelTemplate(e) {
+            return e.value.split("(").join("\n(");
+        }
+        function setCreateSeries5(){
+            var cfc = new CallFuncClass();
+            cfc.setFuncName('Z_MSP_IF200_12');
+            cfc.addParam('IV_PLTCD', $("#pltcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('IV_GDGCD', $("#gdgcd").data("kendoDropDownList").value(), false);
+            cfc.addParam('CT_LIST', '', false);
+            $.ajax({
+                url: URL.callFunction,
+                dataType: "jsonp",
+                jsonp : "callback",
+                data: cfc.getData(),
+                type: "POST",
+                success: function(data) {
+                    if (data.EV_SUBRC == "00" || data.EV_SUBRC == "") {
+                        setChart56(data);
+                    } else {
+                        $("#chart7").kendoChart();
+                    }
+                },
+                error: function () {
+                    alert("error");
+                },
+                beforeSend: function() {
+                    kendo.ui.progress($("#container"), true);
+                },
+                complete: function() {
+                    kendo.ui.progress($("#container"), false);
+                }
+            });
+        }
+        function setChart56(data){
+            seriesData = data.CT_LIST;
+            seriesData5 = [];
+            seriesData6 = [];
+            for (var i = 0 ; i < seriesData.length; i++) {
+                if (seriesData[i].smdiv == "01") {
+                    seriesData5.push({arc : "사양",     avalue : seriesData[i].acr01});
+                    seriesData5.push({arc : "구매가",   avalue : seriesData[i].acr02});
+                    seriesData5.push({arc : "원자재",   avalue : seriesData[i].acr03});
+                    seriesData5.push({arc : "약정",     avalue : seriesData[i].acr04});
+                    seriesData5.push({arc : "원가절감", avalue : seriesData[i].acr05});
+                    seriesData5.push({arc : "환율",     avalue : seriesData[i].acr06});
+                    seriesData5.push({arc : "CKD",      avalue : seriesData[i].acr07});
+                    seriesData5.push({arc : "기타",     avalue : seriesData[i].acr99});
+                } else if (seriesData[i].smdiv == "02"){
+                    seriesData6.push({arc : "사양",     avalue : seriesData[i].acr01});
+                    seriesData6.push({arc : "구매가",   avalue : seriesData[i].acr02});
+                    seriesData6.push({arc : "원자재",   avalue : seriesData[i].acr03});
+                    seriesData6.push({arc : "약정",     avalue : seriesData[i].acr04});
+                    seriesData6.push({arc : "원가절감", avalue : seriesData[i].acr05});
+                    seriesData6.push({arc : "환율",     avalue : seriesData[i].acr06});
+                    seriesData6.push({arc : "CKD",      avalue : seriesData[i].acr07});
+                    seriesData6.push({arc : "기타",     avalue : seriesData[i].acr99});
+
+                }
+            }
+//============================================================================================================================================
+            // 2017.12.26
+            // label위치: valueAxis.range().min에 해당되는 위치로 수정
+            // 기존 axisCrossingValue: 0, padding {top 115} 적용시
+            // -값이 없거나 -값이 padding {top 115}보다 낮거나 높은위치에 있을때 label fix문제 수정
+            var tmpData;
+            if(seriesData5.length > 0){
+                tmpData = seriesData5;
+            }else if(seriesData6.length > 0){
+                tmpData = seriesData6;
+            }else{
+                tmpData = data.CT_LIST;
+            }
+            var categoryDummy = []
+            // categoryAxis DataType : Array.
+            // Object로 묶여있는 DataType을 Array로
+            if(tmpData.length > 0){
+                for(var i = 0; i < tmpData.length; i++){
+                    categoryDummy.push(tmpData[i].arc)
+                }
+            }
+            var options = {
+                    title: {
+                        text: ""
+                    },
+                    legend: {
+                        position: "bottom"
+                    },
+                    seriesDefaults: {
+                        type: "column"
+                    },
+                    series: [{
+                        name: "판매가",
+                        data: seriesData5,
+                        field:"avalue",
+                        labels:{
+                            visible:true,
+                            format:"{0:n1}",
+                            fonte:"13px"
+                        }
+                    }, {
+                        name: "재료비",
+                        data: seriesData6,
+                        field:"avalue",
+                        labels:{
+                            visible:true,
+                            format:"{0:n1}",
+                            fonte:"13px"
+                        }
+                    }],
+                    categoryAxis: [{
+                      name: "series-axis",
+                            line: {
+                            visible: true
+                        },
+                    },{
+                      name: "label-axis",
+                        categories: categoryDummy
+                    }],
+                    valueAxis: {
+                      name: "value",
+                        labels: {
+                            format: "{0}%"
+                        },
+                        majorGridLines: {
+                            visible: false
+                        }
+                    },
+                    tooltip: {
+                        visible: true,
+                        format: "{0}%",
+                        template: "#= series.name #: #= value #"
+                    },
+                    render: function(e) {
+                                var el = e.sender.element;
+                                el.find("text:contains(판매가)")
+                                    .parent()
+                                    .prev("path")
+                                    .attr("stroke-width", 10);
+                                el.find("text:contains(재료비)")
+                                    .parent()
+                                    .prev("path")
+                                    .attr("stroke-width", 10);
+                                el.find("text:contains(판매가)")
+                                .css("margin-right", "10px");
+                    },
+                }
+            $("#chart7").kendoChart(options);
+            var chart = $("#chart7").data("kendoChart");
+            var categoryAxis = chart.getAxis("value");
+            var categoryRange = categoryAxis.range();
+            options.valueAxis.axisCrossingValue = [0, categoryRange.min]
+            chart.setOptions(options)
+        }
+    </script>
+</head>
+<style>
+    .donut-wrapper {
+        position: relative;
+        width: 300px;
+        height: 300px;
+        /*background-color: #3f3f3f;*/
+    }
+      /* The width and height of the chart must be equal to the width and height of the .donut-wrapper in order to be horizontally and vertically centered  */
+    .donut-chart {
+        width: 300px;
+        height: 300px;
+    }
+    .inner-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100px;
+        height: 100px;
+        margin-top: -50px;
+        margin-left: -50px;
+        font-size: 16px;
+        line-height: 100px;
+        vertical-align: middle;
+        text-align: center;
+        color: blue;
+    }
+</style>
+<body>
+<div id="container">
+        <h2 class="h2-tit">전사현황</h2>
+        <div class="hd-sch" style="margin-top: -30px;">
+            <div class="right">
+                <span class="tit-tx">생산공장</span>
+                <td><input type="hidden" id="pltcd" class="header_sch"  /></td>
+                <span class="tit-tx">제품</span>
+                <td><input type="hidden" id="gdgcd" class="header_sch"  /></td>
+            </div>
+        </div>
+        <div class="row-group">
+            <div class="rows w50" style="height:340px;">
+                <div class="row-tit" style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit">관리제품<span class="sub-tx">※ 대상: `16.1월 SOP 이후 신차 (단위: 제품수)</span></h3>
+                </div>
+                <div>
+                <table>
+                    <td>
+                        <div class="donut-wrapper" style="height:300px; margin:0px; ">
+                            <div class="donut-chart" id="chart" ></div>
+                            <div class="inner-content"></div>
+                        </div>
+                    </td>
+                    <td class="chartBx" id="chart2" style="height:300px; width:40%; margin:0px;"></td>
+                </table>
+                </div>
+            </div>
+            <div class="rows w50" style="height:340px;">
+                <!-- 2018.10.19 제품별 이슈현황 삭제 -->
+                <!-- <div class="row-tit" style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit" >제품별 이슈현황 <span class="sub-tx">※ 이슈발생기준: 판매가와 재료비 변동차액의 손익 <strong class="cRed"><span id="spcrt"></span></strong> 이상 (단위: 제품수)</span></h3>
+                </div>
+                <div class="chartBx" id="chart3" style="height:300px;"></div> -->
+                <!-- 2018.10.23 결재관리 ERP 양산품번 신규 등록 대상 추가 -->
+                <div class="row-tit" style="margin:10px 0 5px 0; padding:0 20px 5px 20px">
+                    <h3 class="gtit" >ERP 양산품번 신규 등록 대상</h3>
+                </div>
+                <div class="chartBx" id="grid" style="height:300px;"></div>
+            </div>
+        </div>
+        <div class="row-group">
+            <div class="rows w50" style="height:340px;">
+                <div class="row-tit" style="margin:10px 0 5px 0;padding:0 20px 5px 20px;">
+                    <h3 class="gtit">판매가/재료비 변동금액 <span class="sub-tx">※ 목표(현상) 판매가를 100으로한 상대지표</span></h3>
+                </div>
+                <div class="chartBx" id="chart4" style="height:300px;"></div>
+            </div>
+            <div class="rows w50" style="height:340px;">
+                <div class="row-tit" style="margin:10px 0 5px 0;padding:0 20px 5px 20px;">
+                    <h3 class="gtit">판매가/재료비 변동사유 <span class="sub-tx">※ 초도가 대비 현재가의 차이금액에 대한 변동사유별 비중</span></h3>
+                </div>
+                <div>
+                <div class="chartBx" id="chart7" style="height:300px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="noti-bx mt15">
+            <dl>
+                <dt><i class="fa fa-bullhorn"></i> 공지사항</dt>
+                <dd>
+                    <div class="slide">
+                        <div class="swiper-wrapper" id=noti-bx></div>
+                        <div class="bt-next"><i class="fa fa-caret-down"></i></div>
+                        <div class="bt-prev"><i class="fa fa-caret-up"></i></div>
+                    </div>
+                </dd>
+            </dl>
+        </div><!-- /noti-bx -->
+    </div><!-- /container -->
+</body>
+</html>
