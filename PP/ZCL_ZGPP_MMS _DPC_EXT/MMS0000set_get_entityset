@@ -1,0 +1,569 @@
+METHOD mms0000set_get_entityset.
+*"----------------------------------------------------------------------
+* U1    2019.07.09    APP002    lv_mode TYPE char1 -> char2
+*"----------------------------------------------------------------------
+  DATA : lv_viewid     TYPE char6,
+          lv_mode       TYPE char2,
+          lv_spmon      TYPE spmon,
+          lv_personid   TYPE zpersonid,
+          lv_pspnr_char TYPE char8,
+          lv_pspnr      TYPE ps_psp_ele,
+          lv_matnr      TYPE matnr,
+          lv_fevor      TYPE fevor,
+          lv_vornr      TYPE vornr,
+          lv_worker     TYPE zea_worker,
+          lv_machine    TYPE zea_machine,
+          lv_pono       TYPE aufnr,
+          lv_veran      TYPE ap_veran,
+          lv_code2      TYPE zcmt0011-zcm_code2,
+          lv_date       TYPE date,
+          lv_time       TYPE time,
+          lv_4020       TYPE char20.
+
+   DATA : lt_search TYPE zptsc080t,
+          lt_5601   TYPE TABLE OF zpps5601,
+          lt_5602   TYPE TABLE OF zpps5602,
+          lt_5640   TYPE zpps5640t,
+          lt_5690   TYPE zpps5692t,
+          lt_5700   TYPE zpps5700t,
+          lt_0270   TYPE TABLE OF zpps0270,
+          lt_0290   TYPE TABLE OF zpps0290.
+
+   DATA : ls_entity LIKE LINE OF et_entityset,
+          ls_5640   LIKE LINE OF lt_5640,
+          ls_5690   LIKE LINE OF lt_5690,
+          ls_5700   LIKE LINE OF lt_5700,
+          ls_0270   LIKE LINE OF lt_0270,
+          ls_0290   LIKE LINE OF lt_0290,
+          ls_result TYPE zpps9001.
+
+   DATA : BEGIN OF lt_data,
+            item1  LIKE lt_5601,
+            item2  LIKE lt_5602,
+            item3  LIKE lt_5640,
+            item4  LIKE lt_5690,
+            item5  LIKE lt_5700,
+            item6  LIKE lt_0270,
+            item7  LIKE lt_0290,
+            result LIKE ls_result,
+          END OF lt_data.
+*"----------------------------------------------------------------------
+*" 1.JSON -> ABAP
+*"----------------------------------------------------------------------
+  READ TABLE it_filter_select_options ASSIGNING FIELD-SYMBOL(<fs_filter>) WITH KEY property = 'key'.
+   IF sy-subrc = 0 .
+     READ TABLE <fs_filter>-select_options ASSIGNING FIELD-SYMBOL(<fs_select_option>) INDEX 1.
+     CHECK sy-subrc = 0.
+     zclpt_util=>json_to_data( EXPORTING input = <fs_select_option>-low IMPORTING output = lt_search ).
+   ENDIF.
+*"----------------------------------------------------------------------
+*" 2.Search Filter
+*"----------------------------------------------------------------------
+  CALL FUNCTION 'ZPP_GET_TIMESTAMP'
+     IMPORTING
+       e_l_date = lv_date
+       e_l_time = lv_time
+       e_l_4020 = lv_4020.
+
+   LOOP AT lt_search ASSIGNING FIELD-SYMBOL(<fs_search>).
+     CASE <fs_search>-dptid.
+       WHEN 'viewid'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_viewid>) INDEX 1.
+         CHECK <fs_viewid> IS ASSIGNED.
+         lv_viewid = <fs_viewid>-low.
+
+       WHEN 'mode'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_mode>) INDEX 1.
+         CHECK <fs_mode> IS ASSIGNED.
+         lv_mode = <fs_mode>-low.
+
+       WHEN 'ssav'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_spmon>) INDEX 1.
+         CHECK <fs_spmon> IS ASSIGNED.
+         lv_spmon = <fs_spmon>-low.
+
+       WHEN 'p_worker'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_p_worker>) INDEX 1.
+         CHECK <fs_p_worker> IS ASSIGNED.
+         lv_worker = <fs_p_worker>-low.
+
+       WHEN 'pspnr'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_pspnr>) INDEX 1.
+         CHECK <fs_pspnr> IS ASSIGNED.
+         lv_pspnr_char = <fs_pspnr>-low.
+
+         CALL FUNCTION 'CONVERSION_EXIT_ABPSP_INPUT'
+           EXPORTING
+             input  = lv_pspnr_char
+           IMPORTING
+             output = lv_pspnr.
+
+       WHEN 'matnr'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_matnr>) INDEX 1.
+         CHECK <fs_matnr> IS ASSIGNED.
+         lv_matnr = <fs_matnr>-low.
+         CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
+           EXPORTING
+             input  = lv_matnr
+           IMPORTING
+             output = lv_matnr.
+
+       WHEN 'fevor'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_fevor>) INDEX 1.
+         CHECK <fs_fevor> IS ASSIGNED.
+         lv_fevor = <fs_fevor>-low.
+
+       WHEN 'p_machine'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_p_machine>) INDEX 1.
+         CHECK <fs_p_machine> IS ASSIGNED.
+         lv_machine = <fs_p_machine>-low.
+
+       WHEN 'po_no'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_pono>) INDEX 1.
+         CHECK <fs_pono> IS ASSIGNED.
+         lv_pono = <fs_pono>-low.
+
+         CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+           EXPORTING
+             input  = lv_pono
+           IMPORTING
+             output = lv_pono.
+     WHEN 'veran'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_veran>) INDEX 1.
+         CHECK <fs_veran> IS ASSIGNED.
+         lv_veran = <fs_veran>-low.
+
+       WHEN 'zcm_code2'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_code2>) INDEX 1.
+         CHECK <fs_code2> IS ASSIGNED.
+         lv_code2 = <fs_code2>-low.
+
+       WHEN 'lt_5640'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_5640>) INDEX 1.
+         CHECK <fs_5640> IS ASSIGNED.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_5640>-low IMPORTING output = ls_5640 ).
+
+         ASSIGN ls_5640 TO FIELD-SYMBOL(<fs_5640_current>).
+         CASE lv_mode.
+           WHEN 1 OR 3 OR 5 OR 9 OR 11 OR 13.            "시작 mode
+             <fs_5640_current>-messeq        = lv_4020.
+             <fs_5640_current>-aposting_date = lv_date.
+             <fs_5640_current>-astr_date     = lv_date.
+             <fs_5640_current>-astr_time     = lv_time.
+
+           WHEN 2 OR 4 OR 6 OR 7 OR 8 OR 10 OR 12 OR 14. "종료 mode
+             <fs_5640_current>-messeq        = lv_4020.
+             <fs_5640_current>-aposting_date = lv_date.
+             <fs_5640_current>-afin_date     = lv_date.
+             <fs_5640_current>-afin_time     = lv_time.
+         ENDCASE.
+
+         "일괄 작업등록 화면
+        IF lv_viewid = 'V01021' OR lv_viewid = 'V02021' OR lv_viewid = 'V06021' OR lv_viewid = 'V08021'.
+           zclpt_util=>json_to_data( EXPORTING input = <fs_5640>-low IMPORTING output = lt_5640 ).
+           CASE lv_mode.
+             WHEN 3 OR 11 OR 13.       "시작 mode
+               "일괄등록 화면 messeq 일괄생성 2019.09.25
+               "MODIFY lt_5640 FROM ls_5640 TRANSPORTING messeq aposting_date astr_date astr_time WHERE po_no IS NOT INITIAL.
+               MODIFY lt_5640 FROM ls_5640 TRANSPORTING aposting_date astr_date astr_time WHERE po_no IS NOT INITIAL.
+             WHEN 4 OR 8 OR 12 OR 14.  "종료 mode
+               "일괄등록 화면 messeq 일괄생성 2019.09.25
+               "MODIFY lt_5640 FROM ls_5640 TRANSPORTING messeq aposting_date afin_date afin_time WHERE po_no IS NOT INITIAL.
+               MODIFY lt_5640 FROM ls_5640 TRANSPORTING aposting_date afin_date afin_time WHERE po_no IS NOT INITIAL.
+           ENDCASE.
+         ELSE.
+           APPEND ls_5640 TO lt_5640.
+         ENDIF.
+
+       WHEN 'lt_5690'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_5690>) INDEX 1.
+         CHECK <fs_5690> IS ASSIGNED.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_5690>-low IMPORTING output = lt_5690 ).
+
+       WHEN 'lt_5700'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_5700>) INDEX 1.
+         CHECK <fs_5700> IS ASSIGNED.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_5700>-low IMPORTING output = ls_5700 ).
+         ASSIGN ls_5700 TO FIELD-SYMBOL(<fs_5700_current>).
+         <fs_5700_current>-mode      = lv_mode.
+         <fs_5700_current>-messeq    = lv_4020.
+
+         "일괄 작업등록 화면
+        IF lv_viewid = 'V01021' OR lv_viewid = 'V02021' OR lv_viewid = 'V08021'.
+           zclpt_util=>json_to_data( EXPORTING input = <fs_5700>-low IMPORTING output = lt_5700 ).
+           "일괄등록 화면 messeq 일괄생성 2019.09.25
+           "MODIFY lt_5700 FROM ls_5700 TRANSPORTING mode messeq WHERE po_no IS NOT INITIAL.
+           MODIFY lt_5700 FROM ls_5700 TRANSPORTING mode WHERE po_no IS NOT INITIAL.
+         ELSE.
+           APPEND ls_5700 TO lt_5700.
+         ENDIF.
+
+       WHEN 'lt_0270'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_0270>) INDEX 1.
+         CHECK <fs_0270> IS ASSIGNED.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_0270>-low IMPORTING output = ls_0270 ). "#EC CI_FLDEXT_OK
+
+       WHEN 'lt_0290'.
+         READ TABLE <fs_search>-selopt ASSIGNING FIELD-SYMBOL(<fs_0290>) INDEX 1.
+         CHECK <fs_0290> IS ASSIGNED.
+         zclpt_util=>json_to_data( EXPORTING input = <fs_0290>-low IMPORTING output = ls_0290 ).
+
+     ENDCASE.
+   ENDLOOP.
+*"----------------------------------------------------------------------
+*" 3.Read Data
+*" -IV_VIEWID (V01010:가공 작업지시 조회,
+*"             V01021:가공 일괄 작업실적 등록,
+*"             V02010:성능시험 작업지시 조회,
+*"             V08010:조립 작업지시 조회,
+*"             V01020:가공 작업실적 등록,
+*"             V02020:성능시험 작업실적 등록,
+*"             V05020:도장 작업실적 등록,
+*"             V06020:포장 작업실적 등록,
+*"             V06021:포장 일괄 작업실적 등록
+*"             V08020:조립 작업실적 등록,
+*"             V08021:조립 일괄 작업실적 등록,
+*"             V09010:부가작업 실적 현황,
+*"             V09020:부가작업 실적 등록,
+*"             V11010:공정 이상 현황,
+*"             V11020:공정 이상 등록,
+*"             V12010:생산 대기 현황,
+*"             V12020:생산 대기 등록,
+*"             USER  :로그인 처리  )
+*"----------------------------------------------------------------------
+  CASE lv_viewid.
+     WHEN 'V01010' OR 'V02010' OR 'V08010'.
+** lv_mode (1:가공, 2:조립, 3:성능, 4:작업자, 5:설비)
+       CLEAR ls_result.
+       CALL FUNCTION 'ZPP_MMS_RFC_01'
+         EXPORTING
+           iv_mode     = lv_mode
+           iv_spmon    = lv_spmon
+           iv_personid = lv_personid
+           iv_fevor    = lv_fevor
+           iv_vornr    = lv_vornr
+           iv_worker   = lv_worker
+           iv_machine  = lv_machine
+           iv_po_no    = lv_pono
+           iv_matnr    = lv_matnr
+           iv_pspnr    = lv_pspnr
+         IMPORTING
+           es_return   = ls_result
+           et_info     = lt_5601.
+
+       IF sy-subrc = 0.
+         LOOP AT lt_5601 ASSIGNING FIELD-SYMBOL(<fs_5601>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-po_no
+             IMPORTING
+               output = <fs_5601>-po_no.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-matnr
+             IMPORTING
+               output = <fs_5601>-matnr.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-seq_id
+             IMPORTING
+               output = <fs_5601>-seq_id.
+
+
+           CALL FUNCTION 'CONVERSION_EXIT_ABPSP_OUTPUT'
+             EXPORTING
+               input  = <fs_5601>-pspnr
+             IMPORTING
+               output = <fs_5601>-posid.
+
+         ENDLOOP.
+
+         lt_data-item1[] = lt_5601[].
+       ENDIF.
+
+       lt_data-result = ls_result.
+
+     WHEN 'V01020' OR 'V01021' OR 'V02020' OR 'V02021' OR 'V05020' OR 'V06020' OR 'V06021' OR 'V08020' OR 'V08021'.
+** 공정 실적  처리
+** lv_mode (01:조립 시작,         02:조립 종료,
+**          03:조립일괄 시작,      04:조립일괄 종료,
+**          05:성능 시작,         06:성능 종료,
+**          07:도장 종료,         08:포장 종료,
+**          09:가공 시작,         10:가공 종료,
+**          11:성능일괄 자검외 시작, 12:성능일괄 자검외 종료,
+**          13:가공일괄 시작,      14:가공일괄 종료)
+       IF lt_5640 IS NOT INITIAL.
+         DATA : lv_rc  TYPE char01,
+                lv_msg TYPE bapi_msg.
+
+         CALL FUNCTION 'ZPP_MMS_5640'
+           EXPORTING
+             i_mode    = lv_mode
+           IMPORTING
+             e_rc      = lv_rc
+             e_message = lv_msg
+           CHANGING
+             it_tab1   = lt_5640.
+
+         IF sy-subrc = 0.
+           lt_data-item3[] = lt_5640[].
+         ENDIF.
+
+         IF lv_rc = 0.
+           ls_result-type    = 'S'.
+         ELSE.
+           ls_result-type    = 'E'.
+           ls_result-message = lv_msg.
+         ENDIF.
+         lt_data-result = ls_result.
+       ENDIF.
+
+** 불량 실적 관리
+** 공정 실적 처리 결과 lv_rc = 0 일 경우
+      IF lt_5690 IS NOT INITIAL AND lv_rc = 0.
+
+         LOOP AT lt_5690 ASSIGNING FIELD-SYMBOL(<ft_5690_scrap>).
+           READ TABLE lt_5640 INDEX 1 INTO DATA(ls_5640_scrap).
+           IF sy-subrc = 0.
+             <ft_5690_scrap>-messeq = ls_5640_scrap-messeq.
+           ENDIF.
+         ENDLOOP.
+
+         CALL FUNCTION 'ZPP_MMS_5690'
+           EXPORTING
+             i_mod   = lv_mode
+           TABLES
+             it_tab1 = lt_5690.
+
+         IF sy-subrc = 0.
+           lt_data-item4[] = lt_5690[].
+         ENDIF.
+       ENDIF.
+
+** 작업자 변경&일과 종료
+** it_tab1-mode (1:작업자 변경, 2:일과 종료)
+       IF lt_5700 IS NOT INITIAL.
+         CALL FUNCTION 'ZPP_MMS_5700'
+           TABLES
+             it_tab1 = lt_5700.
+         IF sy-subrc = 0.
+           lt_data-item5[] = lt_5700[].
+           LOOP AT lt_5700 ASSIGNING FIELD-SYMBOL(<fs_change>).
+             IF  <fs_change>-rc = 0 .
+               ls_result-type    = 'S'.
+             ELSE.
+               ls_result-type    = 'E'.
+               ls_result-message = <fs_change>-rc_txt.
+             ENDIF.
+           ENDLOOP.
+           lt_data-result = ls_result.
+         ENDIF.
+       ENDIF.
+
+** 공정이상 종료
+      IF ls_0270 IS NOT INITIAL.
+         CLEAR ls_result.
+         CALL FUNCTION 'ZPP_MMS_RFC_566_01'
+           EXPORTING
+             i_mode    = lv_mode
+             is_input  = ls_0270
+           IMPORTING
+             es_return = ls_result
+           TABLES
+             et_data   = lt_0270.
+
+         IF sy-subrc = 0.
+           LOOP AT lt_0270 ASSIGNING FIELD-SYMBOL(<fs_occ_01>).
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_occ_01>-po_no
+               IMPORTING
+                 output = <fs_occ_01>-po_no.
+
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_occ_01>-vornr
+               IMPORTING
+                 output = <fs_occ_01>-vornr.
+
+             CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+               EXPORTING
+                 input  = <fs_occ_01>-matnr
+               IMPORTING
+                 output = <fs_occ_01>-matnr.
+           ENDLOOP.
+           lt_data-item6[] = lt_0270[].
+         ENDIF.
+         lt_data-result = ls_result.
+       ENDIF.
+   WHEN 'V11010' OR 'V11020'.
+** 공정이상
+** lv_mode (1:조회, 2:등록, 3:취소, 4:종료)
+       CLEAR ls_result.
+       CALL FUNCTION 'ZPP_MMS_RFC_566_01'
+         EXPORTING
+           i_mode    = lv_mode
+           is_input  = ls_0270
+         IMPORTING
+           es_return = ls_result
+         TABLES
+           et_data   = lt_0270.
+
+       IF sy-subrc = 0.
+         LOOP AT lt_0270 ASSIGNING FIELD-SYMBOL(<fs_occ_02>).
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_occ_02>-po_no
+             IMPORTING
+               output = <fs_occ_02>-po_no.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_occ_02>-vornr
+             IMPORTING
+               output = <fs_occ_02>-vornr.
+
+           CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+             EXPORTING
+               input  = <fs_occ_02>-matnr
+             IMPORTING
+               output = <fs_occ_02>-matnr.
+         ENDLOOP.
+         lt_data-item6[] = lt_0270[].
+       ENDIF.
+       lt_data-result = ls_result.
+
+     WHEN 'V12010' OR 'V12020'.
+** 생산대기
+** lv_mode (1:조회, 2:등록, 3:취소, 4:종료)
+       CLEAR ls_result.
+       CALL FUNCTION 'ZPP_MMS_RFC_566_02'
+         EXPORTING
+           i_mode    = lv_mode
+           is_input  = ls_0290
+         IMPORTING
+           es_return = ls_result
+         TABLES
+           et_data   = lt_0290.
+
+       IF sy-subrc = 0.
+         lt_data-item7[] = lt_0290[].
+       ENDIF.
+       lt_data-result = ls_result.
+
+     WHEN 'V09010' OR 'V09020'.
+** 부가작업
+** lv_mode (1:조회, 2:등록, 3:취소, 4:종료)
+       CALL FUNCTION 'ZPP_MMS_RFC_566_03'
+         EXPORTING
+           i_mode    = lv_mode
+           is_input  = ls_0290
+         IMPORTING
+           es_return = ls_result
+         TABLES
+           et_data   = lt_0290.
+
+       IF sy-subrc = 0.
+         lt_data-item7[] = lt_0290[].
+       ENDIF.
+       lt_data-result = ls_result.
+
+
+     WHEN 'USER'.
+       DATA: BEGIN OF ls_user_info,
+               hostaddr            TYPE msxxlist-hostadr,
+               terminal            TYPE string,
+               act_sessions        TYPE sm04dic-counter,
+               max_sessions        TYPE sm04dic-counter,
+               my_session          TYPE sm04dic-counter,
+               my_internal_session TYPE sm04dic-counter,
+               task_state          TYPE sm04dic-counter,
+               update_rec_exist    TYPE thfb_bool,
+               tid                 TYPE sy-index,
+               gui_check_failed    TYPE sy-index,
+               addrstr             TYPE ni_nodeaddr,
+               return              TYPE i,
+             END OF ls_user_info.
+       DATA: BEGIN OF ls_1010.
+               INCLUDE  TYPE zcmcv1010.
+               DATA: terminal LIKE ls_user_info,
+               userinfo TYPE zcmt0011,
+             END OF ls_1010.
+
+       CALL FUNCTION 'TH_USER_INFO'
+         IMPORTING
+           hostaddr            = ls_1010-terminal-hostaddr
+           terminal            = ls_1010-terminal-terminal
+           act_sessions        = ls_1010-terminal-act_sessions
+           max_sessions        = ls_1010-terminal-max_sessions
+           my_session          = ls_1010-terminal-my_session
+           my_internal_session = ls_1010-terminal-my_internal_session
+           task_state          = ls_1010-terminal-task_state
+           update_rec_exist    = ls_1010-terminal-update_rec_exist
+           tid                 = ls_1010-terminal-tid
+           gui_check_failed    = ls_1010-terminal-gui_check_failed
+           addrstr             = ls_1010-terminal-addrstr
+           rc                  = ls_1010-terminal-return.
+
+       IF lv_code2 IS NOT INITIAL.
+         " SELECT SINGLE is possibly not unique 2019.08.12
+         SELECT *
+           INTO CORRESPONDING FIELDS OF ls_1010-userinfo
+           FROM zcmt0011
+          WHERE zmodule   = 'PP'
+            AND zclass    = 'PP700'
+            AND zcm_code1 = 'S'
+            AND zcm_code2 = lv_code2
+          ORDER BY PRIMARY KEY.
+           EXIT.
+         ENDSELECT.
+       ENDIF.
+
+       SELECT personid
+         INTO CORRESPONDING FIELDS OF ls_1010
+         FROM zcmcv1010
+        WHERE personid = sy-uname
+        ORDER BY PRIMARY KEY.
+         EXIT.
+       ENDSELECT.
+
+       IF sy-subrc NE 0.
+         SELECT bname AS personid
+                name_text AS name
+           INTO CORRESPONDING FIELDS OF ls_1010
+           FROM v_usr_name
+          WHERE bname = sy-uname
+          ORDER BY bname.
+           EXIT.
+         ENDSELECT.
+       ENDIF.
+
+       ls_entity-value1 = cl_fdt_json_serializer=>serialize(
+         data        = ls_1010
+         compress    = abap_true
+         pretty_name = cl_fdt_json_serializer=>pretty_mode-low_case
+       ).
+       APPEND ls_entity TO et_entityset.
+       RETURN.
+   WHEN 'MESSEQ'.  "일괄등록 화면 messeq 일괄생성 2019.09.25
+       ls_entity-value1 = cl_fdt_json_serializer=>serialize(
+         data        = lv_4020
+         compress    = abap_true
+         pretty_name = cl_fdt_json_serializer=>pretty_mode-low_case
+       ).
+       APPEND ls_entity TO et_entityset.
+       RETURN.
+   ENDCASE.
+*"----------------------------------------------------------------------
+*" 4.ABAP -> JSON
+*"----------------------------------------------------------------------
+  ls_entity-value1 = cl_fdt_json_serializer=>serialize(
+     data        = lt_data                    "#EC CI_FLDEXT_OK[2215424]
+     compress    = abap_true
+     pretty_name = cl_fdt_json_serializer=>pretty_mode-low_case
+   ).
+   APPEND ls_entity TO et_entityset.
+
+ENDMETHOD.
